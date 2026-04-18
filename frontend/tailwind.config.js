@@ -1,0 +1,82 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        // IBM Carbon palette
+        ibm: {
+          blue: {
+            10: '#edf5ff',
+            20: '#d0e2ff',
+            30: '#a6c8ff',
+            40: '#78a9ff',
+            50: '#4589ff',
+            60: '#0f62fe',
+            70: '#0043ce',
+            80: '#002d9c',
+            90: '#001d6c',
+            100: '#001141',
+          },
+          gray: {
+            10: '#f4f4f4',
+            20: '#e0e0e0',
+            30: '#c6c6c6',
+            40: '#a8a8a8',
+            50: '#8d8d8d',
+            60: '#6f6f6f',
+            70: '#525252',
+            80: '#393939',
+            90: '#262626',
+            100: '#161616',
+          },
+          red: { 50: '#fa4d56', 60: '#da1e28', 70: '#a2191f' },
+          orange: { 40: '#ff832b', 60: '#d44a00' },
+          yellow: { 30: '#f1c21b' },
+          green: { 50: '#24a148', 60: '#198038' },
+          purple: {
+            40: '#be95ff',
+            50: '#a56eff',
+            60: '#8a3ffc',
+            70: '#6929c4',
+            80: '#491d8b',
+          },
+        },
+        carbon: {
+          bg: 'var(--carbon-bg)',
+          layer: 'var(--carbon-layer)',
+          'layer-2': 'var(--carbon-layer-2)',
+          border: 'var(--carbon-border)',
+          'border-strong': 'var(--carbon-border)',
+          text: 'var(--carbon-text)',
+          'text-secondary': 'var(--carbon-text-secondary)',
+          'text-tertiary': 'var(--carbon-text-tertiary)',
+          masthead: '#161616',
+        },
+        severity: {
+          critical: '#da1e28',
+          high: '#ff832b',
+          medium: '#f1c21b',
+          low: '#0f62fe',
+        },
+      },
+      fontFamily: {
+        sans: ['IBM Plex Sans', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+      },
+      borderRadius: {
+        none: '0',
+        DEFAULT: '0',
+        sm: '0',
+        md: '0',
+        lg: '0',
+        xl: '0.75rem',
+        '2xl': '1rem',
+        '3xl': '1.5rem',
+        full: '9999px',
+      },
+    },
+  },
+  plugins: [],
+}

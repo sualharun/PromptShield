@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --carbon-focus: #4589ff;
+  --carbon-bg: #161616;
+  --carbon-layer: #1f1f1f;
+  --carbon-layer-2: #262626;
+  --carbon-border: #393939;
+  --carbon-text: #f4f4f4;
+  --carbon-text-secondary: #c6c6c6;
+  --carbon-text-tertiary: #8d8d8d;
+  --severity-critical: #d32f2f;
+  --severity-high: #f57c00;
+  --severity-medium: #f9a825;
+  --severity-low: #388e3c;
+}
+
+html.dark {
+  --carbon-focus: #4589ff;
+  --carbon-bg: #0f0f0f;
+  --carbon-layer: #1a1a1a;
+  --carbon-layer-2: #262626;
+  --carbon-border: #333333;
+  --carbon-text: #ffffff;
+  --carbon-text-secondary: #b8b8b8;
+  --carbon-text-tertiary: #8d8d8d;
+  --severity-critical: #ff4444;
+  --severity-high: #ff9933;
+  --severity-medium: #ffcc00;
+  --severity-low: #44cc44;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--carbon-bg);
+  color: var(--carbon-text);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* IBM hackathon workspace skin: dark by default, dense analytics layout. */
+.hackathon-ibm {
+  background: linear-gradient(180deg, #121212 0%, #161616 100%);
+}
+
+.hackathon-ibm .bg-white {
+  background-color: #262626 !important;
+}
+
+.hackathon-ibm .bg-carbon-bg {
+  background-color: #161616 !important;
+}
+
+.hackathon-ibm .bg-carbon-layer,
+.hackathon-ibm .bg-carbon-layer-2 {
+  background-color: #1f1f1f !important;
+}
+
+.hackathon-ibm .border-carbon-border {
+  border-color: #393939 !important;
+}
+
+.hackathon-ibm .text-carbon-text {
+  color: #f4f4f4 !important;
+}
+
+.hackathon-ibm .text-carbon-text-secondary {
+  color: #c6c6c6 !important;
+}
+
+.hackathon-ibm .text-carbon-text-tertiary {
+  color: #8d8d8d !important;
+}
+
+.hackathon-ibm .rounded-xl,
+.hackathon-ibm .rounded-2xl,
+.hackathon-ibm .rounded-3xl {
+  border-radius: 2px !important;
+}
+
+.hackathon-ibm [class*='shadow-'] {
+  box-shadow: none !important;
+}
+
+.hackathon-ibm .chart-panel {
+  background: linear-gradient(180deg, #262626 0%, #222 100%);
+  border: 1px solid #393939;
+}
+
+.hackathon-ibm .ibm-accent-top {
+  position: relative;
+}
+
+.hackathon-ibm .ibm-accent-top::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, #0f62fe, #4589ff);
+}
+
+/* Carbon-style focus ring */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--carbon-focus);
+  outline-offset: -2px;
+}
+
+button,
+input,
+textarea {
+  border-radius: 0 !important;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.3s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out both;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #c6c6c6;
+}
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #525252;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Carbon-style indeterminate progress bar */
+.carbon-progress {
+  position: relative;
+  height: 4px;
+  width: 100%;
+  background: #e0e0e0;
+  overflow: hidden;
+}
+html.dark .carbon-progress {
+  background: #393939;
+}
+.carbon-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #0f62fe;
+  width: 30%;
+  animation: carbon-loop 1.4s ease-in-out infinite;
+}
+@keyframes carbon-loop {
+  0% {
+    left: -30%;
+  }
+  100% {
+    left: 100%;
+  }
+}

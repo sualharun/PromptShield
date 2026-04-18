@@ -1,0 +1,87 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+_HERE = Path(__file__).resolve().parent
+# Prefer backend/.env, then optionally project-root .env; do not overwrite
+# already-exported shell variables.
+load_dotenv(_HERE / ".env", override=False)
+load_dotenv(_HERE.parent / ".env", override=False)
+
+
+def _bool(name: str, default: bool) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_pem(env_value: str | None, env_path_value: str | None) -> str | None:
+    """GITHUB_APP_PRIVATE_KEY may be the PEM itself or a path; same for *_PATH."""
+    if env_path_value:
+        try:
+            return Path(env_path_value).expanduser().read_text()
+        except OSError:
+            return None
+    if not env_value:
+        return None
+    if env_value.strip().startswith("-----BEGIN"):
+        return env_value
+    # Treat as a path if it's not a PEM body
+    p = Path(env_value).expanduser()
+    if p.is_file():
+        try:
+            return p.read_text()
+        except OSError:
+            return None
+    return env_value
+
+
+class Settings:
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///./promptshield.db")
+    ALLOWED_ORIGINS: list[str] = [
+        o.strip()
+        for o in os.environ.get(
+            "ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if o.strip()
+    ]
+    ANTHROPIC_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY")
+    AI_MODEL: str = os.environ.get("AI_MODEL", "claude-sonnet-4-20250514")
+    SCAN_RATE_LIMIT: int = int(os.environ.get("SCAN_RATE_LIMIT", "10"))
+    SCAN_RATE_WINDOW: int = int(os.environ.get("SCAN_RATE_WINDOW", "60"))
+    MAX_INPUT_CHARS: int = int(os.environ.get("MAX_INPUT_CHARS", "50000"))
+    REDACT_PERSISTED_INPUT: bool = _bool("REDACT_PERSISTED_INPUT", True)
+    LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
+
+    # GitHub App
+    GITHUB_APP_ID: str | None = os.environ.get("GITHUB_APP_ID")
+    GITHUB_APP_PRIVATE_KEY: str | None = _load_pem(
+        os.environ.get("GITHUB_APP_PRIVATE_KEY"),
+        os.environ.get("GITHUB_APP_PRIVATE_KEY_PATH"),
+    )
+    GITHUB_WEBHOOK_SECRET: str | None = os.environ.get("GITHUB_WEBHOOK_SECRET")
+    RISK_GATE_THRESHOLD: int = int(os.environ.get("RISK_GATE_THRESHOLD", "70"))
+    DASHBOARD_BASE_URL: str = os.environ.get(
+        "DASHBOARD_BASE_URL", "http://localhost:5173"
+    )
+
+    # Auth / sessions
+    SESSION_SECRET: str = os.environ.get(
+        "SESSION_SECRET", "dev-insecure-change-me-in-prod"
+    )
+    SESSION_MAX_AGE_SECONDS: int = int(
+        os.environ.get("SESSION_MAX_AGE_SECONDS", str(60 * 60 * 24 * 7))
+    )
+    BOOTSTRAP_ADMIN_EMAIL: str | None = os.environ.get("BOOTSTRAP_ADMIN_EMAIL")
+    BOOTSTRAP_ADMIN_PASSWORD: str | None = os.environ.get("BOOTSTRAP_ADMIN_PASSWORD")
+    BOOTSTRAP_ADMIN_NAME: str = os.environ.get("BOOTSTRAP_ADMIN_NAME", "Admin")
+
+    # Notifications (opt-in: webhook URLs blank means notifications are skipped)
+    SLACK_WEBHOOK_URL: str | None = os.environ.get("SLACK_WEBHOOK_URL")
+    TEAMS_WEBHOOK_URL: str | None = os.environ.get("TEAMS_WEBHOOK_URL")
+
+
+settings = Settings()
