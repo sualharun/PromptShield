@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "http://promptshield-api.eba-mrzu6ep3.us-east-1.elasticbeanstalk.com/api/$1"
+    }
+  ]
+}
