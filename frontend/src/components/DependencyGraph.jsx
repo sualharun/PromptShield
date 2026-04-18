@@ -119,13 +119,26 @@ function RepoRiskPanel() {
         ]
       })
     })
-      .then(r => r.json())
-      .then(data => { setRepoRisks(data); setLoading(false) })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Risk scoring failed (${r.status})`)
+        return r.json()
+      })
+      .then((data) => {
+        setRepoRisks({
+          total_repos: Number(data?.total_repos || 0),
+          critical_count: Number(data?.critical_count || 0),
+          high_count: Number(data?.high_count || 0),
+          ranked_repos: Array.isArray(data?.ranked_repos) ? data.ranked_repos : [],
+        })
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [])
 
   if (loading) return <p className="px-3 py-4 text-sm text-carbon-text-secondary dark:text-ibm-gray-30">Running ML risk scoring...</p>
   if (!repoRisks) return null
+
+  const rankedRepos = Array.isArray(repoRisks.ranked_repos) ? repoRisks.ranked_repos : []
 
   const priorityColors = {
     CRITICAL: 'border-ibm-red-60 bg-[#2d1215] text-[#ffd7d9]',
@@ -139,7 +152,7 @@ function RepoRiskPanel() {
       <p className="px-1 text-xs text-carbon-text-secondary dark:text-ibm-gray-30">
         {repoRisks.total_repos} repos scored · {repoRisks.critical_count} critical · {repoRisks.high_count} high priority
       </p>
-      {repoRisks.ranked_repos.map((repo, idx) => (
+      {rankedRepos.map((repo, idx) => (
         <div key={repo.repo} className={`border px-3 py-2 ${priorityColors[repo.priority] || priorityColors.LOW}`}>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -231,10 +244,14 @@ export default function DependencyGraph({ scanId }) {
         ]
       })
     })
-      .then(r => r.json())
-      .then(data => {
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Risk scoring failed (${r.status})`)
+        return r.json()
+      })
+      .then((data) => {
         const map = {}
-        for (const repo of data.ranked_repos) {
+        const ranked = Array.isArray(data?.ranked_repos) ? data.ranked_repos : []
+        for (const repo of ranked) {
           map[repo.repo] = repo.avg_risk_score
         }
         setMlRiskMap(map)
