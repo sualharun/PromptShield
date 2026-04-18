@@ -1,16 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Sora:wght@400;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   --carbon-focus: #4589ff;
-  --carbon-bg: #161616;
-  --carbon-layer: #1f1f1f;
-  --carbon-layer-2: #262626;
-  --carbon-border: #393939;
-  --carbon-text: #f4f4f4;
-  --carbon-text-secondary: #c6c6c6;
-  --carbon-text-tertiary: #8d8d8d;
+  --carbon-bg: #091321;
+  --carbon-layer: #0d1b30;
+  --carbon-layer-2: #132540;
+  --carbon-border: rgba(126, 154, 216, 0.16);
+  --carbon-text: #f5f8ff;
+  --carbon-text-secondary: #b6c8eb;
+  --carbon-text-tertiary: #7990b7;
   --severity-critical: #d32f2f;
   --severity-high: #f57c00;
   --severity-medium: #f9a825;
@@ -19,13 +20,13 @@
 
 html.dark {
   --carbon-focus: #4589ff;
-  --carbon-bg: #0f0f0f;
-  --carbon-layer: #1a1a1a;
-  --carbon-layer-2: #262626;
-  --carbon-border: #333333;
-  --carbon-text: #ffffff;
-  --carbon-text-secondary: #b8b8b8;
-  --carbon-text-tertiary: #8d8d8d;
+  --carbon-bg: #050d19;
+  --carbon-layer: #0b1527;
+  --carbon-layer-2: #11203a;
+  --carbon-border: rgba(129, 159, 224, 0.18);
+  --carbon-text: #f8fbff;
+  --carbon-text-secondary: #bfd0ef;
+  --carbon-text-tertiary: #7c94bc;
   --severity-critical: #ff4444;
   --severity-high: #ff9933;
   --severity-medium: #ffcc00;
@@ -39,7 +40,7 @@ body,
 }
 
 body {
-  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--carbon-bg);
   color: var(--carbon-text);
   -webkit-font-smoothing: antialiased;
@@ -49,24 +50,24 @@ body {
 
 /* IBM hackathon workspace skin: dark by default, dense analytics layout. */
 .hackathon-ibm {
-  background: linear-gradient(180deg, #121212 0%, #161616 100%);
+  background: linear-gradient(180deg, #091321 0%, #050d19 100%);
 }
 
 .hackathon-ibm .bg-white {
-  background-color: #262626 !important;
+  background-color: rgba(12, 25, 43, 0.86) !important;
 }
 
 .hackathon-ibm .bg-carbon-bg {
-  background-color: #161616 !important;
+  background-color: #091321 !important;
 }
 
 .hackathon-ibm .bg-carbon-layer,
 .hackathon-ibm .bg-carbon-layer-2 {
-  background-color: #1f1f1f !important;
+  background-color: rgba(12, 25, 43, 0.92) !important;
 }
 
 .hackathon-ibm .border-carbon-border {
-  border-color: #393939 !important;
+  border-color: rgba(126, 154, 216, 0.16) !important;
 }
 
 .hackathon-ibm .text-carbon-text {
@@ -84,16 +85,12 @@ body {
 .hackathon-ibm .rounded-xl,
 .hackathon-ibm .rounded-2xl,
 .hackathon-ibm .rounded-3xl {
-  border-radius: 2px !important;
-}
-
-.hackathon-ibm [class*='shadow-'] {
-  box-shadow: none !important;
+  border-radius: 20px !important;
 }
 
 .hackathon-ibm .chart-panel {
-  background: linear-gradient(180deg, #262626 0%, #222 100%);
-  border: 1px solid #393939;
+  background: linear-gradient(180deg, rgba(10, 22, 39, 0.96) 0%, rgba(7, 17, 31, 0.94) 100%);
+  border: 1px solid rgba(126, 154, 216, 0.16);
 }
 
 .hackathon-ibm .ibm-accent-top {
@@ -192,5 +189,367 @@ html.dark .carbon-progress {
   }
   100% {
     left: 100%;
+  }
+}
+.font-display {
+  font-family: 'Fraunces', Georgia, serif;
+}
+
+.font-body {
+  font-family: 'Sora', 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+.landing-shell {
+  background: #07111d;
+  color: #fff;
+  font-family: 'Sora', 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+.landing-shell button {
+  font-family: inherit;
+}
+
+.landing-shell .liquid-button,
+.landing-shell .nav-pill,
+.landing-shell .glass-chip {
+  border-radius: 10px !important;
+}
+
+.landing-shell .glass-file {
+  border-radius: 6px;
+}
+
+.landing-shell .glass-chip,
+.landing-shell .nav-pill,
+.landing-shell .liquid-button {
+  backdrop-filter: none;
+}
+
+.liquid-surface,
+.liquid-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-surface > *,
+.liquid-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.liquid-surface {
+  background:
+    radial-gradient(circle at 16% 72%, rgba(38, 115, 255, 0.34), transparent 34%),
+    radial-gradient(circle at 70% 28%, rgba(134, 206, 255, 0.18), transparent 26%),
+    radial-gradient(circle at 76% 82%, rgba(84, 133, 255, 0.26), transparent 24%),
+    linear-gradient(135deg, #06111f 0%, #0a1d35 34%, #102848 62%, #0b1830 100%);
+}
+
+.liquid-surface::before,
+.liquid-surface::after,
+.liquid-panel::before,
+.liquid-panel::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+}
+
+.liquid-surface::before {
+  inset: -10%;
+  opacity: 0.88;
+  background:
+    radial-gradient(circle at 22% 35%, rgba(147, 214, 255, 0.1), transparent 18%),
+    radial-gradient(circle at 64% 72%, rgba(255, 255, 255, 0.12), transparent 18%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(113, 172, 255, 0.1) 0,
+      rgba(113, 172, 255, 0.1) 2px,
+      rgba(255, 255, 255, 0.02) 7px,
+      rgba(255, 255, 255, 0) 34px
+    );
+  mix-blend-mode: screen;
+  animation: liquidShift 18s ease-in-out infinite alternate;
+}
+
+.liquid-surface::after {
+  inset: -18%;
+  opacity: 0.62;
+  background:
+    radial-gradient(ellipse at 34% 28%, rgba(172, 225, 255, 0.16), transparent 26%),
+    radial-gradient(ellipse at 62% 60%, rgba(45, 102, 255, 0.2), transparent 28%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(167, 212, 255, 0.18) 0,
+      rgba(167, 212, 255, 0.18) 1px,
+      rgba(255, 255, 255, 0) 22px,
+      rgba(255, 255, 255, 0) 44px
+    );
+  filter: blur(18px);
+  mix-blend-mode: screen;
+  animation: liquidPulse 22s ease-in-out infinite alternate;
+}
+
+.liquid-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 18% 65%, rgba(32, 98, 255, 0.36), transparent 30%),
+    radial-gradient(circle at 70% 34%, rgba(154, 221, 255, 0.2), transparent 28%),
+    linear-gradient(135deg, #081526 0%, #0c2039 36%, #133155 64%, #0d1d35 100%);
+}
+
+.liquid-panel::before {
+  inset: -6%;
+  opacity: 0.92;
+  background:
+    radial-gradient(circle at 58% 24%, rgba(165, 222, 255, 0.14), transparent 22%),
+    radial-gradient(circle at 78% 76%, rgba(255, 255, 255, 0.12), transparent 20%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(107, 165, 255, 0.11) 0,
+      rgba(107, 165, 255, 0.11) 2px,
+      rgba(255, 255, 255, 0.02) 8px,
+      rgba(255, 255, 255, 0) 34px
+    );
+  mix-blend-mode: screen;
+  animation: liquidShift 16s ease-in-out infinite alternate;
+}
+
+.liquid-panel::after {
+  inset: -12%;
+  opacity: 0.58;
+  background:
+    radial-gradient(ellipse at 28% 54%, rgba(86, 134, 255, 0.22), transparent 28%),
+    radial-gradient(ellipse at 74% 34%, rgba(220, 245, 255, 0.18), transparent 24%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(168, 214, 255, 0.14) 0,
+      rgba(168, 214, 255, 0.14) 1px,
+      rgba(255, 255, 255, 0) 20px,
+      rgba(255, 255, 255, 0) 46px
+    );
+  filter: blur(14px);
+  mix-blend-mode: screen;
+  animation: liquidPulse 20s ease-in-out infinite alternate;
+}
+
+.workflow-card {
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 20px 60px rgba(0, 8, 20, 0.28);
+}
+
+.workflow-visual {
+  background:
+    radial-gradient(circle at 65% 30%, rgba(154, 221, 255, 0.08), transparent 20%),
+    radial-gradient(circle at 32% 72%, rgba(79, 131, 255, 0.1), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.01)),
+    #0d1b30;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at top left, rgba(42, 119, 255, 0.1), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(87, 181, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, #07111d 0%, #050c16 100%);
+}
+
+.app-header,
+.app-footer,
+.app-panel,
+.app-sidebar-panel {
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.app-header,
+.app-footer {
+  background: #08111d;
+  border-color: rgba(129, 159, 224, 0.14) !important;
+}
+
+.app-panel,
+.app-sidebar-panel {
+  background: #091423;
+  border: 1px solid rgba(129, 159, 224, 0.14);
+  border-radius: 8px !important;
+}
+
+.app-panel-soft {
+  background: #0b1829;
+  border: 1px solid rgba(129, 159, 224, 0.12);
+  border-radius: 6px !important;
+}
+
+.app-pill {
+  border-radius: 4px !important;
+  border: 1px solid rgba(129, 159, 224, 0.16);
+  background: #0e1f34;
+  backdrop-filter: none;
+}
+
+.app-table-row {
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.app-table-row:hover {
+  background: rgba(78, 124, 255, 0.08);
+}
+
+.app-section-label {
+  color: #85b6ff;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.app-primary-button,
+.app-secondary-button {
+  border-radius: 4px !important;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.app-primary-button:hover,
+.app-secondary-button:hover {
+  transform: translateY(-1px);
+}
+
+.app-primary-button {
+  background: #0f62fe;
+  border: 1px solid #78a9ff;
+  color: #f7fbff;
+}
+
+.app-secondary-button {
+  background: #0c1a2b;
+  border: 1px solid rgba(129, 159, 224, 0.16);
+  color: #d7e6ff;
+}
+
+.app-input,
+.app-textarea {
+  border-radius: 4px !important;
+  border: 1px solid rgba(129, 159, 224, 0.16);
+  background: #07111d;
+}
+
+.app-shell .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(129, 159, 224, 0.35);
+}
+
+.landing-ibm-header {
+  border: 1px solid rgba(129, 159, 224, 0.18);
+  background: rgba(6, 17, 31, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.landing-ibm-logo,
+.landing-ibm-nav,
+.landing-ibm-button,
+.landing-ibm-secondary {
+  border-radius: 4px !important;
+}
+
+.landing-ibm-logo,
+.landing-ibm-nav {
+  border: 1px solid rgba(129, 159, 224, 0.16);
+  background: #0a1b2f;
+}
+
+.landing-ibm-button {
+  background: #0f62fe;
+  border: 1px solid #78a9ff;
+  color: #f5f9ff;
+}
+
+.landing-ibm-secondary {
+  background: #0b1829;
+  border: 1px solid rgba(129, 159, 224, 0.18);
+  color: #d6e5ff;
+}
+
+.landing-ibm-button:hover {
+  background: #0353e9;
+}
+
+.landing-ibm-secondary:hover,
+.landing-ibm-nav:hover,
+.landing-ibm-logo:hover {
+  background: #10233a;
+}
+
+.terminal-grid {
+  position: relative;
+}
+
+.terminal-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(126, 154, 216, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 154, 216, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.18;
+}
+
+.terminal-panel {
+  background:
+    linear-gradient(180deg, rgba(9, 20, 35, 0.98) 0%, rgba(6, 15, 27, 0.98) 100%);
+  border: 1px solid rgba(129, 159, 224, 0.16);
+  border-radius: 6px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    0 0 0 1px rgba(8, 18, 33, 0.8);
+}
+
+.terminal-soft {
+  background: #0b1829;
+  border: 1px solid rgba(129, 159, 224, 0.12);
+  border-radius: 4px !important;
+}
+
+.terminal-table thead tr {
+  background: #08111d;
+}
+
+.terminal-table tbody tr {
+  border-bottom: 1px solid rgba(129, 159, 224, 0.08);
+}
+
+.terminal-table tbody tr:hover {
+  background: rgba(15, 98, 254, 0.05);
+}
+
+.terminal-label {
+  color: #78a9ff;
+  font-family: 'Sora', sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.terminal-mono {
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, monospace;
+}
+
+@keyframes liquidShift {
+  0% {
+    transform: translate3d(-2%, 1%, 0) scale(1.02);
+  }
+  100% {
+    transform: translate3d(3%, -2%, 0) scale(1.08);
+  }
+}
+
+@keyframes liquidPulse {
+  0% {
+    transform: translate3d(1%, -1%, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(-3%, 2%, 0) scale(1.06);
   }
 }

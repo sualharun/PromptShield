@@ -13,11 +13,12 @@ import {
 import { asNetworkErrorMessage, fetchWithTimeout } from '../lib/fetchWithTimeout.js'
 
 const TOOLTIP_STYLE = {
-  border: '1px solid #e0e0e0',
-  background: '#ffffff',
+  border: '1px solid rgba(129, 159, 224, 0.16)',
+  background: 'rgba(7, 17, 31, 0.96)',
+  color: '#f5f8ff',
   fontSize: 12,
-  fontFamily: 'IBM Plex Sans, sans-serif',
-  borderRadius: 0,
+  fontFamily: 'Sora, sans-serif',
+  borderRadius: 16,
   padding: '8px 10px',
 }
 
@@ -28,6 +29,14 @@ function shortDay(d) {
   } catch {
     return d
   }
+}
+
+function SectionTitle({ title }) {
+  return (
+    <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8aa6d2]">
+      {title}
+    </h2>
+  )
 }
 
 export default function CompliancePage() {
@@ -69,29 +78,21 @@ export default function CompliancePage() {
   }, [])
 
   const cweData = useMemo(() => compliance?.cwe?.slice(0, 8) || [], [compliance])
-  const owaspData = useMemo(
-    () => compliance?.owasp?.slice(0, 8) || [],
-    [compliance]
-  )
+  const owaspData = useMemo(() => compliance?.owasp?.slice(0, 8) || [], [compliance])
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-10">
+      <div className="mx-auto w-full max-w-7xl px-6 py-10">
         <div className="carbon-progress" />
-        <p className="mt-3 text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">
-          Loading compliance posture…
-        </p>
+        <p className="mt-3 text-sm text-[#8da7cd]">Loading compliance posture…</p>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-10">
-        <div
-          role="alert"
-          className="border-l-4 border-ibm-red-60 border-y border-r border-carbon-border bg-[#fff1f1] px-4 py-3 text-sm text-ibm-red-70 dark:border-ibm-gray-80 dark:bg-ibm-red-70/20 dark:text-ibm-red-50"
-        >
+      <div className="mx-auto w-full max-w-7xl px-6 py-10">
+        <div role="alert" className="app-panel border-l-4 border-l-[#ff5b73] px-4 py-3 text-sm text-[#ffd5dc]">
           {error}
         </div>
       </div>
@@ -99,144 +100,140 @@ export default function CompliancePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-6 py-8">
+    <div className="mx-auto w-full max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ibm-blue-70 dark:text-ibm-blue-40">
+          <p className="app-section-label text-[11px] font-semibold">
             Compliance · auditability · enterprise readiness
           </p>
-          <h1 className="mt-2 font-light text-4xl leading-tight text-carbon-text dark:text-ibm-gray-10">
+          <h1 className="mt-3 font-display text-5xl leading-[0.98] tracking-[-0.05em] text-white">
             Compliance and governance
           </h1>
-          <p className="mt-1 max-w-2xl text-[13px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+          <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-[#9bb2d6]">
             Findings are mapped to CWE and OWASP LLM categories with an audit trail for who scanned what and when.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href="/api/reports/compliance.csv"
-            className="inline-flex items-center gap-2 border border-carbon-border bg-white px-4 py-2 text-sm font-medium text-carbon-text transition-colors hover:bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80"
-          >
+          <a href="/api/reports/compliance.csv" className="app-secondary-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium">
             Export CSV
           </a>
-          <a
-            href="/api/reports/compliance.pdf"
-            className="inline-flex items-center gap-2 border border-ibm-blue-60 bg-ibm-blue-60 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-ibm-blue-70"
-          >
+          <a href="/api/reports/compliance.pdf" className="app-primary-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium">
             Export PDF
           </a>
         </div>
       </div>
 
-      <section className="grid gap-px border border-carbon-border bg-carbon-border md:grid-cols-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-80">
-        <div className="bg-white px-5 py-5 dark:bg-ibm-gray-90">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">Total findings</div>
-          <div className="mt-2 font-light text-3xl tabular-nums">{compliance?.total_findings ?? 0}</div>
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="app-panel-soft px-5 py-5">
+          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#7f9ac1]">Total findings</div>
+          <div className="mt-2 text-3xl font-light tabular-nums text-white">{compliance?.total_findings ?? 0}</div>
         </div>
-        <div className="bg-white px-5 py-5 dark:bg-ibm-gray-90">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">Compliant PR ratio</div>
-          <div className="mt-2 font-light text-3xl tabular-nums text-ibm-green-60">{(compliance?.compliant_pr_ratio ?? 0).toFixed(1)}%</div>
+        <div className="app-panel-soft px-5 py-5">
+          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#7f9ac1]">Compliant PR ratio</div>
+          <div className="mt-2 text-3xl font-light tabular-nums text-[#98e0ff]">{(compliance?.compliant_pr_ratio ?? 0).toFixed(1)}%</div>
         </div>
-        <div className="bg-white px-5 py-5 dark:bg-ibm-gray-90">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">Risk trend delta (30d)</div>
-          <div className={`mt-2 font-light text-3xl tabular-nums ${(timeline?.trend_delta ?? 0) <= 0 ? 'text-ibm-green-60' : 'text-ibm-red-60'}`}>
+        <div className="app-panel-soft px-5 py-5">
+          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#7f9ac1]">Risk trend delta (30d)</div>
+          <div className={`mt-2 text-3xl font-light tabular-nums ${(timeline?.trend_delta ?? 0) <= 0 ? 'text-[#98e0ff]' : 'text-[#ff9cab]'}`}>
             {timeline?.trend_delta != null ? `${timeline.trend_delta > 0 ? '+' : ''}${timeline.trend_delta}` : '0'}
           </div>
         </div>
       </section>
 
-      <section className="mt-6 grid gap-px border border-carbon-border bg-carbon-border md:grid-cols-2 dark:border-ibm-gray-80 dark:bg-ibm-gray-80">
-        <div className="bg-white p-5 dark:bg-ibm-gray-90">
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Top CWE mappings</h2>
+      <section className="mt-6 grid gap-6 md:grid-cols-2">
+        <div className="app-panel p-5">
+          <SectionTitle title="Top CWE mappings" />
           <div className="h-64 w-full">
             <ResponsiveContainer>
               <BarChart data={cweData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                <CartesianGrid stroke="#e0e0e0" vertical={false} />
-                <XAxis dataKey="key" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#c6c6c6' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" vertical={false} />
+                <XAxis dataKey="key" tick={{ fontSize: 11, fill: '#86a2cb' }} tickLine={false} axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#86a2cb' }} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Bar dataKey="count" fill="#8a3ffc" />
+                <Bar dataKey="count" fill="#8fbcff" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white p-5 dark:bg-ibm-gray-90">
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">OWASP LLM categories</h2>
+        <div className="app-panel p-5">
+          <SectionTitle title="OWASP LLM categories" />
           <div className="h-64 w-full">
             <ResponsiveContainer>
               <BarChart data={owaspData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                <CartesianGrid stroke="#e0e0e0" vertical={false} />
-                <XAxis dataKey="key" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#c6c6c6' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" vertical={false} />
+                <XAxis dataKey="key" tick={{ fontSize: 11, fill: '#86a2cb' }} tickLine={false} axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#86a2cb' }} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Bar dataKey="count" fill="#0f62fe" />
+                <Bar dataKey="count" fill="#5ec8ff" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </section>
 
-      <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Enterprise readiness (1000 repos)</h2>
-        <div className="mb-3 h-3 w-full overflow-hidden border border-carbon-border dark:border-ibm-gray-80">
+      <section className="app-panel mt-6 p-5">
+        <SectionTitle title="Enterprise readiness (1000 repos)" />
+        <div className="mb-3 h-3 w-full overflow-hidden rounded-full border border-white/8">
           <div
-            className="h-full bg-ibm-blue-60"
+            className="h-full rounded-full bg-[#5ea8ff]"
             style={{ width: `${Math.min(100, readiness?.readiness_percent || 0)}%` }}
           />
         </div>
-        <p className="text-sm text-carbon-text-secondary dark:text-ibm-gray-30">
+        <p className="text-sm text-[#bfd0ef]">
           {readiness?.repos_covered ?? 0} repos covered / {readiness?.target_repos ?? 1000} target · readiness {readiness?.readiness_percent ?? 0}%
         </p>
-        <ul className="mt-3 space-y-1 text-[12px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-          {(readiness?.indicators || []).map((i) => (
-            <li key={i}>- {i}</li>
+        <ul className="mt-3 space-y-1 text-[12px] text-[#8da7cd]">
+          {(readiness?.indicators || []).map((indicator) => (
+            <li key={indicator}>- {indicator}</li>
           ))}
         </ul>
       </section>
 
-      <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Risk timeline (30 days)</h2>
+      <section className="app-panel mt-6 p-5">
+        <SectionTitle title="Risk timeline (30 days)" />
         <div className="h-64 w-full">
           <ResponsiveContainer>
             <LineChart data={(timeline?.points || []).map((p) => ({ ...p, label: shortDay(p.date) }))} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-              <CartesianGrid stroke="#e0e0e0" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#c6c6c6' }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+              <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#86a2cb' }} tickLine={false} axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#86a2cb' }} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={TOOLTIP_STYLE} />
-              <Line type="monotone" dataKey="avg_risk" stroke="#0f62fe" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="avg_risk" stroke="#5ea8ff" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </section>
 
-      <section className="mt-6 border border-carbon-border bg-white dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-        <div className="border-b border-carbon-border bg-carbon-layer px-4 py-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Audit trail</h2>
+      <section className="app-panel mt-6">
+        <div className="border-b border-white/10 px-4 py-3">
+          <SectionTitle title="Audit trail" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-carbon-border dark:border-ibm-gray-80">
-                {['Time', 'Actor', 'Action', 'Repo', 'PR', 'Details'].map((h) => (
-                  <th key={h} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-carbon-text-secondary dark:text-ibm-gray-30">{h}</th>
+              <tr className="border-b border-white/8">
+                {['Time', 'Actor', 'Action', 'Repo', 'PR', 'Details'].map((header) => (
+                  <th key={header} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#8aa6d2]">
+                    {header}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {audit.map((a) => (
-                <tr key={a.id} className="border-b border-carbon-border/70 dark:border-ibm-gray-80/70">
-                  <td className="px-4 py-2 text-[12px] text-carbon-text-secondary dark:text-ibm-gray-30">{new Date(a.created_at).toLocaleString()}</td>
-                  <td className="px-4 py-2 font-mono text-[12px]">{a.actor}</td>
-                  <td className="px-4 py-2 text-[12px]">{a.action}</td>
-                  <td className="px-4 py-2 text-[12px]">{a.repo_full_name || '-'}</td>
-                  <td className="px-4 py-2 text-[12px]">{a.pr_number ?? '-'}</td>
-                  <td className="px-4 py-2 font-mono text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">{JSON.stringify(a.details || {})}</td>
+              {audit.map((item) => (
+                <tr key={item.id} className="app-table-row border-b border-white/8">
+                  <td className="px-4 py-2 text-[12px] text-[#8da7cd]">{new Date(item.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-2 font-mono text-[12px] text-[#eef5ff]">{item.actor}</td>
+                  <td className="px-4 py-2 text-[12px] text-[#bfd0ef]">{item.action}</td>
+                  <td className="px-4 py-2 text-[12px] text-[#bfd0ef]">{item.repo_full_name || '-'}</td>
+                  <td className="px-4 py-2 text-[12px] text-[#bfd0ef]">{item.pr_number ?? '-'}</td>
+                  <td className="px-4 py-2 font-mono text-[11px] text-[#8da7cd]">{JSON.stringify(item.details || {})}</td>
                 </tr>
               ))}
               {!audit.length && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-5 text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">No audit events yet.</td>
+                  <td colSpan={6} className="px-4 py-5 text-sm text-[#8da7cd]">No audit events yet.</td>
                 </tr>
               )}
             </tbody>
@@ -244,16 +241,16 @@ export default function CompliancePage() {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-px border border-carbon-border bg-carbon-border md:grid-cols-2 dark:border-ibm-gray-80 dark:bg-ibm-gray-80">
-        <div className="bg-white p-5 dark:bg-ibm-gray-90">
-          <h3 className="text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">Why this is different</h3>
-          <p className="mt-2 text-sm text-carbon-text-secondary dark:text-ibm-gray-30">
-            Protect AI and Lakera mostly focus on runtime monitoring. PromptShield scans during pull request review to prevent risky prompt code before merge.
+      <section className="mt-6 grid gap-6 md:grid-cols-2">
+        <div className="app-panel p-5">
+          <h3 className="text-[13px] font-semibold text-white">Why this is different</h3>
+          <p className="mt-2 text-sm text-[#9bb2d6]">
+            PromptShield scans during pull request review to prevent risky prompt code before merge, instead of waiting for runtime-only controls after deploy.
           </p>
         </div>
-        <div className="bg-white p-5 dark:bg-ibm-gray-90">
-          <h3 className="text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">Open source posture</h3>
-          <p className="mt-2 text-sm text-carbon-text-secondary dark:text-ibm-gray-30">
+        <div className="app-panel p-5">
+          <h3 className="text-[13px] font-semibold text-white">Open-source posture</h3>
+          <p className="mt-2 text-sm text-[#9bb2d6]">
             Self-hostable, community-driven, and designed to run inside your SDLC without vendor lock-in.
           </p>
         </div>

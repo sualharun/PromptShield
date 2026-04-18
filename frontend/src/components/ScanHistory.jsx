@@ -13,25 +13,25 @@ function fmt(ts) {
 }
 
 function scoreColor(s) {
-  if (s <= 30) return '#198038'
-  if (s <= 60) return '#8a6800'
-  if (s <= 85) return '#b8470c'
-  return '#a2191f'
+  if (s <= 30) return '#5ec8ff'
+  if (s <= 60) return '#ffd86e'
+  if (s <= 85) return '#ff9b52'
+  return '#ff5b73'
 }
 
 export default function ScanHistory({ scans = [], activeId, onSelect }) {
   return (
-    <aside className="h-full w-full overflow-y-auto border-l border-carbon-border bg-carbon-layer scrollbar-thin dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
-      <div className="border-b border-carbon-border bg-white px-4 py-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-carbon-text-secondary dark:text-ibm-gray-30">
+    <aside className="terminal-panel h-full w-full overflow-y-auto border-l border-carbon-border scrollbar-thin">
+      <div className="border-b border-white/8 px-4 py-3">
+        <h2 className="terminal-label text-[10px] font-semibold">
           Recent scans
         </h2>
-        <p className="mt-0.5 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+        <p className="mt-0.5 text-[11px] text-[#8da7cd]">
           Last 10 · click to reload
         </p>
       </div>
       {scans.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">
+        <p className="px-4 py-6 text-sm text-[#8da7cd]">
           No scans yet.
         </p>
       ) : (
@@ -42,17 +42,17 @@ export default function ScanHistory({ scans = [], activeId, onSelect }) {
               <li key={s.id}>
                 <button
                   onClick={() => onSelect?.(s.id)}
-                  className={`w-full border-b border-carbon-border px-4 py-3 text-left transition-colors dark:border-ibm-gray-80 ${
+                  className={`terminal-mono w-full border-b border-white/8 px-4 py-3 text-left transition-colors ${
                     active
-                      ? 'border-l-2 border-l-ibm-blue-60 bg-white dark:bg-ibm-gray-90'
-                      : 'border-l-2 border-l-transparent bg-carbon-layer hover:bg-white dark:bg-ibm-gray-100 dark:hover:bg-ibm-gray-90'
+                      ? 'border-l-2 border-l-[#5ea8ff] bg-white/6'
+                      : 'border-l-2 border-l-transparent bg-transparent hover:bg-white/4'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 font-mono text-[11px] text-carbon-text-secondary dark:text-ibm-gray-30">
+                    <span className="flex items-center gap-1.5 font-mono text-[11px] text-[#bfd0ef]">
                       <span>#{s.id}</span>
                       {s.source === 'github' && s.pr_number != null && (
-                        <span className="border border-ibm-blue-60 bg-ibm-blue-10 px-1 py-px text-[9px] font-semibold uppercase tracking-wider text-ibm-blue-70 dark:bg-ibm-blue-90/40 dark:text-ibm-blue-30">
+                        <span className="border border-[#5ea8ff]/25 bg-[#5ea8ff]/10 px-2 py-px text-[9px] font-semibold uppercase tracking-wider text-[#a6d8ff]">
                           PR #{s.pr_number}
                         </span>
                       )}
@@ -66,14 +66,14 @@ export default function ScanHistory({ scans = [], activeId, onSelect }) {
                     </span>
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-carbon-text-tertiary">
-                    <span>{s.total_count} finding{s.total_count === 1 ? '' : 's'}</span>
+                    <span className="text-[#8da7cd]">{s.total_count} finding{s.total_count === 1 ? '' : 's'}</span>
                     {s.critical_count > 0 && (
-                      <span className="text-[#a2191f]">
+                      <span className="text-[#ff8a9b]">
                         {s.critical_count} crit
                       </span>
                     )}
                     {s.high_count > 0 && (
-                      <span className="text-[#b8470c]">{s.high_count} high</span>
+                      <span className="text-[#ffc18a]">{s.high_count} high</span>
                     )}
                   </div>
                 </button>

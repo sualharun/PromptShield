@@ -15,49 +15,63 @@ import PRScanRow from '../components/PRScanRow.jsx'
 import RiskGauge from '../components/RiskGauge.jsx'
 import { asNetworkErrorMessage, fetchWithTimeout } from '../lib/fetchWithTimeout.js'
 
-const INSTALL_URL =
-  import.meta.env?.VITE_GITHUB_APP_INSTALL_URL || '#'
+const INSTALL_URL = import.meta.env?.VITE_GITHUB_APP_INSTALL_URL || '#'
 
 const TOOLTIP_STYLE = {
-  border: '1px solid #e0e0e0',
-  background: '#ffffff',
+  border: '1px solid rgba(129, 159, 224, 0.16)',
+  background: 'rgba(7, 17, 31, 0.96)',
+  color: '#f5f8ff',
   fontSize: 12,
-  fontFamily: 'IBM Plex Sans, sans-serif',
-  borderRadius: 0,
+  fontFamily: 'Sora, sans-serif',
+  borderRadius: 16,
   padding: '8px 10px',
 }
 
 const SEVERITY_COLORS = {
-  critical: '#da1e28',
-  high: '#ff832b',
-  medium: '#f1c21b',
-  low: '#0f62fe',
+  critical: '#ff5b73',
+  high: '#ff9b52',
+  medium: '#ffd86e',
+  low: '#5ea8ff',
 }
 
 function avgRiskColor(v) {
-  if (v <= 30) return '#198038'
-  if (v <= 60) return '#8a6800'
-  if (v <= 85) return '#b8470c'
-  return '#a2191f'
+  if (v <= 30) return '#5ec8ff'
+  if (v <= 60) return '#ffd86e'
+  if (v <= 85) return '#ff9b52'
+  return '#ff5b73'
 }
 
 function Tile({ label, value, accent, hint }) {
   return (
-    <div className="bg-white px-5 py-5 dark:bg-ibm-gray-90">
-      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+    <div className="terminal-soft px-5 py-5">
+      <div className="terminal-label text-[10px] font-medium">
         {label}
       </div>
       <div
-        className="mt-2 font-light text-3xl tabular-nums"
-        style={{ color: accent || 'var(--carbon-text)' }}
+        className="terminal-mono mt-2 text-3xl font-light tabular-nums"
+        style={{ color: accent || '#f5f8ff' }}
       >
         {value}
       </div>
-      {hint && (
-        <div className="mt-1 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-          {hint}
-        </div>
-      )}
+      {hint && <div className="mt-1 text-[11px] text-[#8da7cd]">{hint}</div>}
+    </div>
+  )
+}
+
+function FrostSection({ children, className = '' }) {
+  return <section className={`terminal-panel p-5 ${className}`}>{children}</section>
+}
+
+function DashboardHeading({ kicker, title, body }) {
+  return (
+    <div>
+      <p className="app-section-label text-[11px] font-semibold">{kicker}</p>
+      <h1 className="mt-3 text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-white">
+        {title}
+      </h1>
+      <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-[#9bb2d6]">
+        {body}
+      </p>
     </div>
   )
 }
@@ -69,11 +83,7 @@ function StackedSeverityBar({ severity }) {
     (severity?.medium || 0) +
     (severity?.low || 0)
   if (!total) {
-    return (
-      <p className="text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">
-        No findings to bucket yet.
-      </p>
-    )
+    return <p className="text-sm text-[#8da7cd]">No findings to bucket yet.</p>
   }
   const segments = [
     { key: 'critical', label: 'Critical', value: severity.critical || 0, color: SEVERITY_COLORS.critical },
@@ -83,28 +93,26 @@ function StackedSeverityBar({ severity }) {
   ]
   return (
     <div>
-      <div className="flex h-3 w-full overflow-hidden border border-carbon-border dark:border-ibm-gray-80">
-        {segments.map((s) => {
-          const pct = (s.value / total) * 100
+      <div className="flex h-3 w-full overflow-hidden border border-white/10">
+        {segments.map((segment) => {
+          const pct = (segment.value / total) * 100
           if (!pct) return null
           return (
             <div
-              key={s.key}
-              style={{ width: `${pct}%`, background: s.color }}
-              title={`${s.label}: ${s.value} (${pct.toFixed(1)}%)`}
+              key={segment.key}
+              style={{ width: `${pct}%`, background: segment.color }}
+              title={`${segment.label}: ${segment.value} (${pct.toFixed(1)}%)`}
             />
           )
         })}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
-        {segments.map((s) => (
-          <div key={s.key} className="flex items-center gap-2 text-[12px]">
-            <span className="h-2 w-2" style={{ background: s.color }} />
-            <span className="text-carbon-text-secondary dark:text-ibm-gray-30">
-              {s.label}
-            </span>
-            <span className="ml-auto font-mono tabular-nums text-carbon-text dark:text-ibm-gray-10">
-              {s.value}
+        {segments.map((segment) => (
+          <div key={segment.key} className="flex items-center gap-2 text-[12px]">
+            <span className="h-2 w-2 rounded-full" style={{ background: segment.color }} />
+            <span className="text-[#a8bfdf]">{segment.label}</span>
+            <span className="terminal-mono ml-auto tabular-nums text-[#eef5ff]">
+              {segment.value}
             </span>
           </div>
         ))}
@@ -126,29 +134,26 @@ function TrendDelta({ daily }) {
     const a = avg(last)
     const b = avg(prev)
     if (a == null || b == null) return null
-    return { diff: a - b, current: a }
+    return { diff: a - b }
   }, [daily])
 
   if (!delta) {
     return (
-      <span className="text-[11px] uppercase tracking-[0.1em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+      <span className="text-[11px] uppercase tracking-[0.1em] text-[#8da7cd]">
         Needs 14 days of history
       </span>
     )
   }
+
   const improving = delta.diff < 0
-  const color = improving ? '#198038' : delta.diff > 0 ? '#a2191f' : '#6f6f6f'
+  const color = improving ? '#5ec8ff' : delta.diff > 0 ? '#ff7d8f' : '#8da7cd'
   const arrow = improving ? '▼' : delta.diff > 0 ? '▲' : '—'
+
   return (
-    <span
-      className="inline-flex items-center gap-1 text-[12px] font-medium tabular-nums"
-      style={{ color }}
-    >
+    <span className="inline-flex items-center gap-1 text-[12px] font-medium tabular-nums" style={{ color }}>
       <span>{arrow}</span>
       <span>{Math.abs(delta.diff).toFixed(1)} pts</span>
-      <span className="text-carbon-text-tertiary dark:text-ibm-gray-40">
-        vs prior 7 days
-      </span>
+      <span className="text-[#8da7cd]">vs prior 7 days</span>
     </span>
   )
 }
@@ -191,22 +196,17 @@ export default function DashboardPage({ onSelectScan }) {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-10">
+      <div className="mx-auto w-full max-w-7xl px-6 py-10">
         <div className="carbon-progress" />
-        <p className="mt-3 text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">
-          Loading GitHub activity…
-        </p>
+        <p className="mt-3 text-sm text-[#8da7cd]">Loading GitHub activity…</p>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-10">
-        <div
-          role="alert"
-          className="border-l-4 border-ibm-red-60 border-y border-r border-carbon-border bg-[#fff1f1] px-4 py-3 text-sm text-ibm-red-70 dark:border-ibm-gray-80 dark:bg-ibm-red-70/20 dark:text-ibm-red-50"
-        >
+      <div className="mx-auto w-full max-w-7xl px-6 py-10">
+        <div role="alert" className="app-panel border-l-4 border-l-[#ff5b73] px-4 py-3 text-sm text-[#ffd5dc]">
           {error}
         </div>
       </div>
@@ -218,26 +218,18 @@ export default function DashboardPage({ onSelectScan }) {
   const avgRisk = data?.avg_risk ?? 0
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-6 py-8">
+    <div className="terminal-grid mx-auto w-full max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ibm-purple-70 dark:text-ibm-purple-40">
-            <span className="h-1.5 w-1.5 bg-ibm-purple-60" />
-            GitHub PR activity · Enterprise view
-          </p>
-          <h1 className="mt-2 font-light text-4xl leading-tight text-carbon-text dark:text-ibm-gray-10">
-            Security posture
-          </h1>
-          <p className="mt-1 max-w-xl text-[13px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-            Every pull request reviewed by the PromptShield bot — scored,
-            gated, and tracked across repos.
-          </p>
-        </div>
+        <DashboardHeading
+          kicker="GitHub PR activity"
+          title="Security posture"
+          body="Every pull request reviewed by the PromptShield bot, scored against policy, and tracked across repositories from one command surface."
+        />
         <div className="flex items-center gap-2">
           {!empty && (
             <a
               href="/api/dashboard/github/export.csv"
-              className="inline-flex items-center gap-2 border border-carbon-border bg-white px-4 py-2 text-sm font-medium text-carbon-text transition-colors hover:bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80"
+              className="app-secondary-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium"
             >
               Export CSV
               <span className="text-xs">↓</span>
@@ -247,7 +239,7 @@ export default function DashboardPage({ onSelectScan }) {
             href={INSTALL_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 border border-ibm-blue-60 bg-ibm-blue-60 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-ibm-blue-70"
+            className="app-primary-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium"
           >
             Connect a repo
             <span className="text-base leading-none">→</span>
@@ -256,23 +248,21 @@ export default function DashboardPage({ onSelectScan }) {
       </div>
 
       {empty ? (
-        <section className="mt-8 border border-carbon-border bg-white px-8 py-12 text-center dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ibm-blue-70 dark:text-ibm-blue-40">
-            No PR scans yet
-          </p>
-          <h2 className="mt-2 font-light text-2xl text-carbon-text dark:text-ibm-gray-10">
+        <section className="terminal-panel mt-8 px-8 py-12 text-center">
+          <p className="terminal-label text-[11px] font-semibold">No PR scans yet</p>
+          <h2 className="mt-3 text-3xl font-semibold text-white">
             Install the GitHub App to start auto-reviewing pull requests
           </h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm text-carbon-text-secondary dark:text-ibm-gray-30">
-            PromptShield runs on every PR — posts inline comments on risky
-            prompt code and a Check Run gate that can block merging when the
-            risk score crosses the configured threshold.
+          <p className="mx-auto mt-3 max-w-xl text-sm text-[#9bb2d6]">
+            PromptShield runs on every PR, posts inline comments on risky prompt code, and
+            writes a Check Run gate that can block merging when the risk score crosses your
+            configured threshold.
           </p>
           <a
             href={INSTALL_URL}
             target="_blank"
             rel="noreferrer"
-            className="mt-5 inline-flex items-center gap-2 border border-ibm-blue-60 bg-ibm-blue-60 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-ibm-blue-70"
+            className="app-primary-button mt-5 inline-flex items-center gap-2 px-5 py-2 text-sm font-medium"
           >
             Install GitHub App
             <span className="text-base leading-none">→</span>
@@ -280,21 +270,19 @@ export default function DashboardPage({ onSelectScan }) {
         </section>
       ) : (
         <>
-          <section className="relative overflow-hidden border border-carbon-border dark:border-ibm-gray-80">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-ibm-blue-10 via-white to-white dark:from-ibm-blue-90/30 dark:via-ibm-gray-100 dark:to-ibm-gray-100" />
-            <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-ibm-purple-50/20 blur-3xl" />
+          <section className="terminal-panel relative overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#0c1a2b] via-[#091423] to-[#07111d]" />
             <div className="relative grid gap-6 px-6 py-6 md:grid-cols-[260px,1fr] md:items-center">
               <div className="flex flex-col items-center">
                 <RiskGauge score={Math.round(avgRisk)} size={180} />
-                <div className="mt-3 text-[11px] font-medium uppercase tracking-[0.1em] text-carbon-text-tertiary dark:text-ibm-gray-40">
-                  Average risk across {data.total_pr_scans} scan
-                  {data.total_pr_scans === 1 ? '' : 's'}
+                <div className="terminal-label mt-3 text-[10px] font-medium">
+                  Average risk across {data.total_pr_scans} scan{data.total_pr_scans === 1 ? '' : 's'}
                 </div>
                 <div className="mt-2">
                   <TrendDelta daily={data.daily_velocity} />
                 </div>
               </div>
-              <div className="grid gap-px bg-carbon-border dark:bg-ibm-gray-80 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Tile
                   label="Total PR scans"
                   value={data.total_pr_scans ?? 0}
@@ -303,7 +291,7 @@ export default function DashboardPage({ onSelectScan }) {
                 <Tile
                   label={`Gate failures (≥${data.threshold ?? 70})`}
                   value={data.gate_failures ?? 0}
-                  accent="#a2191f"
+                  accent="#ff7d8f"
                   hint="Blocked before merge"
                 />
                 <Tile
@@ -318,19 +306,19 @@ export default function DashboardPage({ onSelectScan }) {
                       ? data.avg_findings_per_pr.toFixed(2)
                       : '0.00'
                   }
-                  accent="#8a3ffc"
+                  accent="#7db2ff"
                   hint="Signal density"
                 />
               </div>
             </div>
           </section>
 
-          <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
+          <FrostSection className="mt-6">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+              <h2 className="terminal-label text-[10px] font-semibold">
                 Severity mix
               </h2>
-              <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+              <span className="text-[11px] text-[#8da7cd]">
                 {(severity.critical || 0) +
                   (severity.high || 0) +
                   (severity.medium || 0) +
@@ -339,11 +327,11 @@ export default function DashboardPage({ onSelectScan }) {
               </span>
             </div>
             <StackedSeverityBar severity={severity} />
-          </section>
+          </FrostSection>
 
           {data.daily_velocity?.length > 0 && (
-            <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-              <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+            <FrostSection className="mt-6">
+              <h2 className="terminal-label mb-3 text-[10px] font-semibold">
                 Risk trend (14 days)
               </h2>
               <div className="h-56 w-full">
@@ -357,30 +345,30 @@ export default function DashboardPage({ onSelectScan }) {
                   >
                     <defs>
                       <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0f62fe" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#0f62fe" stopOpacity={0.05} />
+                        <stop offset="0%" stopColor="#5ea8ff" stopOpacity={0.45} />
+                        <stop offset="100%" stopColor="#5ea8ff" stopOpacity={0.05} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="#e0e0e0" vertical={false} />
+                    <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" vertical={false} />
                     <XAxis
                       dataKey="label"
-                      stroke="#6f6f6f"
+                      stroke="#86a2cb"
                       tickLine={false}
-                      axisLine={{ stroke: '#c6c6c6' }}
-                      tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                      axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }}
+                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
                     />
                     <YAxis
                       domain={[0, 100]}
-                      stroke="#6f6f6f"
+                      stroke="#86a2cb"
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
                     />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
                     <Area
                       type="monotone"
                       dataKey="avg_risk"
-                      stroke="#0f62fe"
+                      stroke="#5ea8ff"
                       strokeWidth={2}
                       fill="url(#riskFill)"
                       name="Avg risk"
@@ -389,13 +377,13 @@ export default function DashboardPage({ onSelectScan }) {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-            </section>
+            </FrostSection>
           )}
 
-          <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-            <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
-              Top vulnerability types
-            </h2>
+          <FrostSection className="mt-6">
+              <h2 className="terminal-label mb-3 text-[10px] font-semibold">
+                Top vulnerability types
+              </h2>
             {data.top_finding_types?.length > 0 ? (
               <div className="h-56 w-full">
                 <ResponsiveContainer>
@@ -404,44 +392,42 @@ export default function DashboardPage({ onSelectScan }) {
                     data={data.top_finding_types}
                     margin={{ top: 4, right: 24, left: 32, bottom: 4 }}
                   >
-                    <CartesianGrid stroke="#e0e0e0" horizontal={false} />
+                    <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" horizontal={false} />
                     <XAxis
                       type="number"
                       allowDecimals={false}
-                      stroke="#6f6f6f"
+                      stroke="#86a2cb"
                       tickLine={false}
-                      axisLine={{ stroke: '#c6c6c6' }}
-                      tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                      axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }}
+                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
                     />
                     <YAxis
                       type="category"
                       dataKey="type"
                       width={170}
-                      stroke="#6f6f6f"
+                      stroke="#86a2cb"
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#d7e6ff' }}
                     />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Bar dataKey="count" fill="#8a3ffc" animationDuration={700} />
+                    <Bar dataKey="count" fill="#5ea8ff" animationDuration={700} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : (
-              <p className="text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">
-                No findings yet.
-              </p>
+              <p className="text-sm text-[#8da7cd]">No findings yet.</p>
             )}
-          </section>
+          </FrostSection>
 
           <section className="mt-6">
-            <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+            <h2 className="terminal-label mb-3 text-[10px] font-semibold">
               Recent pull requests
             </h2>
-            <div className="overflow-x-auto border border-carbon-border bg-white dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
-              <table className="w-full text-left">
+            <div className="terminal-panel overflow-x-auto">
+              <table className="terminal-table w-full text-left">
                 <thead>
-                  <tr className="border-b border-carbon-border bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
+                  <tr className="border-b border-white/10">
                     {[
                       'Repository',
                       'PR',
@@ -450,21 +436,21 @@ export default function DashboardPage({ onSelectScan }) {
                       'State',
                       'Time',
                       '',
-                    ].map((h, i) => (
+                    ].map((header, index) => (
                       <th
-                        key={i}
-                        className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-carbon-text-secondary dark:text-ibm-gray-30"
+                        key={index}
+                        className="terminal-label px-4 py-2 text-[10px] font-semibold"
                       >
-                        {h}
+                        {header}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {data.recent.map((s) => (
+                  {data.recent.map((scan) => (
                     <PRScanRow
-                      key={s.id}
-                      scan={s}
+                      key={scan.id}
+                      scan={scan}
                       threshold={data.threshold}
                       onSelect={onSelectScan}
                     />
@@ -476,43 +462,43 @@ export default function DashboardPage({ onSelectScan }) {
 
           {data.by_repo?.length > 0 && (
             <section className="mt-6">
-              <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+              <h2 className="terminal-label mb-3 text-[10px] font-semibold">
                 Risk by repository
               </h2>
-              <div className="border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
+              <div className="terminal-panel p-5">
                 <div className="h-64 w-full">
                   <ResponsiveContainer>
                     <BarChart
                       layout="vertical"
-                      data={data.by_repo.map((r) => ({
-                        name: r.repo_full_name,
-                        avg_risk: r.avg_risk,
-                        scan_count: r.scan_count,
+                      data={data.by_repo.map((repo) => ({
+                        name: repo.repo_full_name,
+                        avg_risk: repo.avg_risk,
+                        scan_count: repo.scan_count,
                       }))}
                       margin={{ top: 8, right: 24, left: 32, bottom: 8 }}
                     >
-                      <CartesianGrid stroke="#e0e0e0" horizontal={false} />
+                      <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" horizontal={false} />
                       <XAxis
                         type="number"
                         domain={[0, 100]}
-                        stroke="#6f6f6f"
+                        stroke="#86a2cb"
                         tickLine={false}
-                        axisLine={{ stroke: '#c6c6c6' }}
-                        tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                        axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }}
+                        tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
                       />
                       <YAxis
                         type="category"
                         dataKey="name"
                         width={160}
-                        stroke="#6f6f6f"
+                        stroke="#86a2cb"
                         tickLine={false}
                         axisLine={false}
-                        tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                        tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#d7e6ff' }}
                       />
                       <Tooltip contentStyle={TOOLTIP_STYLE} />
                       <Bar dataKey="avg_risk" animationDuration={700}>
-                        {data.by_repo.map((r, i) => (
-                          <Cell key={i} fill={avgRiskColor(r.avg_risk)} />
+                        {data.by_repo.map((repo, index) => (
+                          <Cell key={index} fill={avgRiskColor(repo.avg_risk)} />
                         ))}
                       </Bar>
                     </BarChart>

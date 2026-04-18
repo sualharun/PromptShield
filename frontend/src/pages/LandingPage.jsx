@@ -1,770 +1,685 @@
-import { useEffect, useState, useMemo } from 'react'
-import { motion, useReducedMotion, AnimatePresence } from 'framer-motion'
-import {
-  Shield,
-  ArrowRight,
-  GitPullRequest,
-  Network,
-  FileText,
-  Zap,
-  Lock,
-  Target,
-  AlertTriangle,
-  CheckCircle2,
-  Github,
-  MessageSquare,
-  Workflow,
-  ExternalLink,
-  ChevronRight,
-  Play,
-} from 'lucide-react'
-import { Button } from '../components/ui/button.jsx'
-import { fetchWithTimeout } from '../lib/fetchWithTimeout.js'
+import { motion, useReducedMotion } from 'framer-motion'
+import { ArrowRight, ChevronRight, Clock3, Download, ShieldCheck, Sparkles } from 'lucide-react'
 
-// Animation variants
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } },
-}
+const TRUST_MARKS = [
+  'GitHub PR Reviews',
+  'OWASP LLM Top 10',
+  'CWE Mapping',
+  'Policy-as-Code',
+  'Claude Audit',
+  'Audit Trail',
+]
 
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.1 },
+const WORKFLOW_CARDS = [
+  {
+    id: 'review',
+    badge: 'Hours back, every week',
+    title: 'Pull-request review, fully automated',
+    description:
+      'Scan risky prompt and agent code before merge with static rules, semantic audit, and repo-level gates.',
+    visual: 'steps',
   },
+  {
+    id: 'scoring',
+    badge: 'Risk score from 0 to 100',
+    title: 'Scoring as a repeatable system',
+    description:
+      'Return ranked findings with severity, confidence, evidence snippets, and concrete remediation guidance.',
+    visual: 'table',
+  },
+  {
+    id: 'redteam',
+    badge: '14 payloads across 6 categories',
+    title: 'Automated jailbreak testing your team can trust',
+    description:
+      'Probe indirect injection, prompt leakage, and unsafe tool behavior with structural attack simulations.',
+    visual: 'clauses',
+  },
+  {
+    id: 'release',
+    badge: 'CSV, PDF, and policy gates',
+    title: 'Governance outputs traceable to source',
+    description:
+      'Export audit-ready reports, policy decisions, and persistent scan history for security and compliance teams.',
+    visual: 'files',
+  },
+]
+
+const METRICS = [
+  {
+    stat: '7',
+    label: 'Static rule categories run in parallel before the semantic audit begins',
+    badge: 'Layered detection',
+    before: 'Manual review',
+    after: 'Automated baseline',
+  },
+  {
+    stat: '14',
+    label: 'Structural jailbreak payloads used to pressure test flagged prompts',
+    badge: 'Jailbreak engine',
+    before: 'Ad hoc tests',
+    after: 'Repeatable coverage',
+  },
+  {
+    stat: '96%',
+    label: 'F1 on the built-in 100-sample benchmark for vulnerable vs safe inputs',
+    badge: 'Evaluation benchmark',
+    before: 'Guesswork',
+    after: 'Measured quality',
+  },
+]
+
+const TESTIMONIALS = [
+  {
+    label: 'Shift-left review',
+    metric: 'Before merge',
+    quote:
+      'PromptShield is built to catch risky prompt and agent changes during pull request review instead of waiting for runtime monitoring after deploy.',
+    name: 'README',
+    title: 'Product positioning',
+  },
+  {
+    label: 'Open-source posture',
+    metric: 'Self-hostable',
+    quote:
+      'The repo already ships scanning, compliance reporting, PM analytics, policy validation, dependency CVE checks, and GitHub App review flows in one stack.',
+    name: 'README',
+    title: 'Current feature set',
+  },
+]
+
+const RESULTS = [
+  {
+    workflow: 'PR prompt review',
+    beforeLabel: 'Where risk is found',
+    before: 'Late in QA',
+    afterLabel: 'Where risk is found',
+    after: 'During code review',
+    result: 'Higher-confidence blocking before merge',
+  },
+  {
+    workflow: 'Semantic + static analysis',
+    beforeLabel: 'Coverage',
+    before: 'Regex only',
+    afterLabel: 'Coverage',
+    after: 'Layered analysis',
+    result: 'Findings sorted by severity and confidence',
+  },
+  {
+    workflow: '.promptshield.yml policy',
+    beforeLabel: 'Repo gate',
+    before: 'One-size-fits-all',
+    afterLabel: 'Repo gate',
+    after: 'Configurable',
+    result: 'Thresholds, overrides, and ignore rules per repo',
+  },
+  {
+    workflow: 'History and audit trail',
+    beforeLabel: 'Evidence',
+    before: 'Transient',
+    afterLabel: 'Evidence',
+    after: 'Persistent',
+    result: 'Last 10 scans and immutable-style activity log',
+  },
+  {
+    workflow: 'Compliance exports',
+    beforeLabel: 'Governance handoff',
+    before: 'Manual',
+    afterLabel: 'Governance handoff',
+    after: 'Exportable',
+    result: 'CSV and PDF reports for audit workflows',
+  },
+  {
+    workflow: 'Cross-repo analytics',
+    beforeLabel: 'Pattern detection',
+    before: 'Siloed',
+    afterLabel: 'Pattern detection',
+    after: 'Shared trends',
+    result: 'Recurring vuln types across repositories',
+  },
+]
+
+const OUTCOMES = [
+  {
+    title: 'GitHub App posts inline review comments only on added diff lines',
+    stat: 'PR',
+    detail: 'review bot flow baked into the backend and dashboard',
+  },
+  {
+    title: 'Compliance dashboard maps findings directly to CWE and OWASP LLM categories',
+    stat: 'CWE',
+    detail: 'governance view already wired into the frontend',
+  },
+  {
+    title: 'PM analytics track blocked PRs, author leaderboards, and remediation deltas',
+    stat: 'PM',
+    detail: 'role-gated analytics for engineering leadership',
+  },
+]
+
+const SECURITY_BADGES = ['SOC 2', 'GDPR', 'Audit Logs', 'RBAC', 'Zero Training']
+
+const FOOTER_COLUMNS = [
+  {
+    heading: 'Platform',
+    links: ['Overview', 'Workflows', 'Knowledge Hubs', 'Reports', 'Integrations', 'Automation'],
+  },
+  {
+    heading: 'Workflows',
+    links: ['Review prompts', 'Red-team releases', 'Search incidents', 'Create evidence', 'Resolve findings', 'Run experiments'],
+  },
+  {
+    heading: 'Resources',
+    links: ['Insights', 'News', 'Events', 'Customer stories', 'Documentation', 'Pricing'],
+  },
+  {
+    heading: 'Security',
+    links: ['Trust Center', 'Policy validation', 'Compliance exports', 'Audit trail', 'Role-based auth'],
+  },
+]
+
+function scrollToSection(id, reduced) {
+  const section = document.getElementById(id)
+  if (!section) return
+  section.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
 }
 
-// Animated number component
-function AnimatedNumber({ value, suffix = '', reduced }) {
-  const [display, setDisplay] = useState(0)
-
-  useEffect(() => {
-    if (reduced || value === 0) {
-      setDisplay(value)
-      return
-    }
-    let frame
-    const start = performance.now()
-    const duration = 1200
-    const tick = (now) => {
-      const t = Math.min((now - start) / duration, 1)
-      const eased = 1 - Math.pow(1 - t, 3)
-      setDisplay(Math.round(value * eased))
-      if (t < 1) frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [value, reduced])
-
+function Reveal({ children, className = '', delay = 0, reduced }) {
   return (
-    <>
-      {display.toLocaleString()}
-      {suffix}
-    </>
-  )
-}
-
-// Navigation component
-function Navigation({ onScan, onDashboard }) {
-  const [scrolled, setScrolled] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
-
-  return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? 'border-b border-carbon-border bg-ibm-gray-100/95 backdrop-blur-md'
-          : 'bg-transparent'
-      }`}
+    <motion.div
+      className={className}
+      initial={reduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.18 }}
+      transition={reduced ? { duration: 0 } : { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="mx-auto max-w-7xl px-6">
-        <nav className="flex h-14 items-center justify-between">
-          {/* Logo */}
-          <a href="#" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center bg-ibm-blue-60">
-              <Shield className="h-4.5 w-4.5 text-white" />
-            </div>
-            <span className="text-[15px] font-semibold tracking-tight text-carbon-text">
-              PromptShield
-            </span>
-          </a>
-
-          {/* Desktop Nav Links */}
-          <div className="hidden items-center gap-8 lg:flex">
-            <a
-              href="#features"
-              className="text-[13px] text-carbon-text-secondary transition-colors hover:text-carbon-text"
-            >
-              Features
-            </a>
-            <a
-              href="#use-cases"
-              className="text-[13px] text-carbon-text-secondary transition-colors hover:text-carbon-text"
-            >
-              Use Cases
-            </a>
-            <button
-              onClick={onDashboard}
-              className="text-[13px] text-carbon-text-secondary transition-colors hover:text-carbon-text"
-            >
-              Dashboard
-            </button>
-            <a
-              href="#"
-              className="text-[13px] text-carbon-text-secondary transition-colors hover:text-carbon-text"
-            >
-              Docs
-            </a>
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[13px] text-carbon-text-secondary transition-colors hover:text-carbon-text"
-            >
-              GitHub
-            </a>
-          </div>
-
-          {/* Desktop CTA */}
-          <div className="hidden items-center gap-3 lg:flex">
-            <button className="text-[13px] text-carbon-text-secondary transition-colors hover:text-carbon-text">
-              Log in
-            </button>
-            <Button size="sm" onClick={onScan}>
-              Sign up
-            </Button>
-          </div>
-
-          {/* Mobile menu button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 lg:hidden"
-            aria-label="Toggle menu"
-          >
-            <div className="flex h-4 w-5 flex-col justify-center gap-1.5">
-              <span
-                className={`block h-px w-full bg-carbon-text transition-transform ${
-                  mobileMenuOpen ? 'translate-y-[4px] rotate-45' : ''
-                }`}
-              />
-              <span
-                className={`block h-px w-full bg-carbon-text transition-transform ${
-                  mobileMenuOpen ? '-translate-y-[2px] -rotate-45' : ''
-                }`}
-              />
-            </div>
-          </button>
-        </nav>
-
-        {/* Mobile menu */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="border-t border-carbon-border lg:hidden"
-            >
-              <div className="flex flex-col gap-4 py-6">
-                <a href="#features" className="text-sm text-carbon-text-secondary">
-                  Features
-                </a>
-                <a href="#use-cases" className="text-sm text-carbon-text-secondary">
-                  Use Cases
-                </a>
-                <button
-                  onClick={onDashboard}
-                  className="text-left text-sm text-carbon-text-secondary"
-                >
-                  Dashboard
-                </button>
-                <a href="#" className="text-sm text-carbon-text-secondary">
-                  Docs
-                </a>
-                <div className="flex gap-3 pt-4">
-                  <Button variant="outline" className="flex-1" onClick={onScan}>
-                    Log in
-                  </Button>
-                  <Button className="flex-1" onClick={onScan}>
-                    Sign up
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.header>
+      {children}
+    </motion.div>
   )
 }
 
-// Hero Section
-function HeroSection({ onScan, onDashboard, reduced }) {
+function LiquidButton({ children, onClick, tone = 'light', icon = false }) {
+  const toneClass = tone === 'dark' ? 'landing-ibm-secondary' : 'landing-ibm-button'
+
   return (
-    <section className="relative overflow-hidden pt-32 pb-20 md:pt-40 md:pb-28">
-      {/* Background gradient */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/4 top-0 h-[800px] w-[600px] -rotate-12 bg-[radial-gradient(ellipse,rgba(15,98,254,0.12)_0%,transparent_60%)]" />
-        <div className="absolute right-0 top-1/4 h-[600px] w-[500px] rotate-12 bg-[radial-gradient(ellipse,rgba(138,63,252,0.08)_0%,transparent_60%)]" />
-      </div>
-
-      <div className="mx-auto max-w-7xl px-6">
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          animate="visible"
-          className="text-center"
-        >
-          {/* Badge */}
-          <motion.div variants={fadeInUp} className="mb-6 inline-flex items-center gap-2">
-            <span className="inline-flex items-center gap-2 border border-ibm-blue-60/30 bg-ibm-blue-60/10 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ibm-blue-40">
-              <span className="h-1.5 w-1.5 rounded-full bg-ibm-green-50 animate-pulse" />
-              Enterprise Security
-            </span>
-          </motion.div>
-
-          {/* Headline */}
-          <motion.h1
-            variants={fadeInUp}
-            className="mx-auto max-w-4xl text-4xl font-light leading-[1.1] tracking-tight text-carbon-text md:text-6xl lg:text-7xl"
-          >
-            Enterprise LLM
-            <br />
-            <span className="text-ibm-blue-40">Security Scanning</span>
-          </motion.h1>
-
-          {/* Subheading */}
-          <motion.p
-            variants={fadeInUp}
-            className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-carbon-text-secondary md:text-xl"
-          >
-            Detect prompt injection, jailbreaks, and data exfiltration in real-time.
-            Protect your AI pipelines before vulnerabilities reach production.
-          </motion.p>
-
-          {/* CTA Buttons */}
-          <motion.div
-            variants={fadeInUp}
-            className="mt-10 flex flex-wrap items-center justify-center gap-4"
-          >
-            <div className="border border-ibm-blue-50/40 p-0.5">
-              <Button size="lg" className="px-8" onClick={onScan}>
-                Start Free Scan
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-            <Button size="lg" variant="outline" className="gap-2" onClick={onDashboard}>
-              <Play className="h-4 w-4" />
-              View Demo
-            </Button>
-          </motion.div>
-
-          {/* Trust badges */}
-          <motion.div
-            variants={fadeInUp}
-            className="mt-12 flex flex-wrap items-center justify-center gap-6 text-[11px] uppercase tracking-[0.1em] text-carbon-text-tertiary"
-          >
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="h-3.5 w-3.5 text-ibm-green-50" />
-              SOC 2 Compliant
-            </span>
-            <span className="hidden text-carbon-border md:inline">|</span>
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="h-3.5 w-3.5 text-ibm-green-50" />
-              OWASP Aligned
-            </span>
-            <span className="hidden text-carbon-border md:inline">|</span>
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="h-3.5 w-3.5 text-ibm-green-50" />
-              Open Source
-            </span>
-          </motion.div>
-        </motion.div>
-
-        {/* Hero Visual */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="mt-16 md:mt-20"
-        >
-          <div className="relative mx-auto max-w-5xl">
-            <div className="relative overflow-hidden border border-carbon-border bg-ibm-gray-100/80 p-1">
-              {/* Browser chrome */}
-              <div className="flex items-center gap-2 border-b border-carbon-border bg-ibm-gray-90 px-4 py-3">
-                <div className="flex gap-1.5">
-                  <div className="h-2.5 w-2.5 rounded-full bg-ibm-red-60" />
-                  <div className="h-2.5 w-2.5 rounded-full bg-ibm-yellow-30" />
-                  <div className="h-2.5 w-2.5 rounded-full bg-ibm-green-50" />
-                </div>
-                <div className="ml-4 flex-1 rounded-sm bg-ibm-gray-100 px-3 py-1.5 text-[11px] text-carbon-text-tertiary">
-                  promptshield.io/dashboard
-                </div>
-              </div>
-              {/* Dashboard preview */}
-              <div className="bg-carbon-bg p-6">
-                <DashboardPreview reduced={reduced} />
-              </div>
-            </div>
-            {/* Glow effect */}
-            <div className="absolute -inset-4 -z-10 bg-gradient-to-b from-ibm-blue-60/20 via-transparent to-transparent blur-3xl" />
-          </div>
-        </motion.div>
-      </div>
-    </section>
+    <button
+      onClick={onClick}
+      className={`liquid-button inline-flex items-center gap-2 border px-5 py-3 text-sm font-semibold tracking-[-0.02em] transition-colors duration-200 ${toneClass}`}
+    >
+      <span>{children}</span>
+      {icon && <ArrowRight className="h-4 w-4" strokeWidth={2.2} />}
+    </button>
   )
 }
 
-// Dashboard Preview Component
-function DashboardPreview({ reduced }) {
+function GlassChip({ children, className = '' }) {
   return (
-    <div className="grid gap-4 md:grid-cols-4">
-      {/* Stats cards */}
-      {[
-        { label: 'Total Scans', value: 1247, trend: '+12%' },
-        { label: 'Threats Blocked', value: 89, trend: '+5%', color: 'text-ibm-red-50' },
-        { label: 'Repos Protected', value: 34, trend: '+3' },
-        { label: 'Risk Score', value: 24, suffix: '/100', color: 'text-ibm-green-50' },
-      ].map((stat, i) => (
-        <motion.div
-          key={stat.label}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 + i * 0.1 }}
-          className="border border-carbon-border bg-ibm-gray-100 p-4"
-        >
-          <div className="text-[10px] font-medium uppercase tracking-wider text-carbon-text-tertiary">
-            {stat.label}
-          </div>
-          <div className={`mt-2 text-2xl font-light tabular-nums ${stat.color || 'text-carbon-text'}`}>
-            <AnimatedNumber value={stat.value} suffix={stat.suffix} reduced={reduced} />
-          </div>
-          <div className="mt-1 text-[10px] text-ibm-green-50">{stat.trend}</div>
-        </motion.div>
-      ))}
+    <div
+      className={`glass-chip inline-flex items-center gap-2 border border-white/10 bg-white/6 px-4 py-2 text-[13px] font-medium text-white/62 ${className}`}
+    >
+      <Clock3 className="h-3.5 w-3.5" />
+      <span>{children}</span>
     </div>
   )
 }
 
-// Statistics Section
-function StatisticsSection({ reduced }) {
-  const stats = [
-    { value: 500, suffix: '+', label: 'LLM Attack Patterns Detected' },
-    { value: 89, suffix: '%', label: 'F1 Score on Benchmark' },
-    { value: 10, suffix: 'K+', label: 'PRs Scanned' },
-    { value: 50, suffix: '+', label: 'Fortune 500 Companies' },
-  ]
-
+function HeroTrustRow({ reduced }) {
   return (
-    <section className="border-y border-carbon-border bg-ibm-gray-100/50 py-16">
-      <div className="mx-auto max-w-7xl px-6">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-100px' }}
-          variants={staggerContainer}
-          className="grid gap-8 md:grid-cols-4"
-        >
-          {stats.map((stat, i) => (
-            <motion.div key={stat.label} variants={fadeInUp} className="text-center">
-              <div className="text-4xl font-light tabular-nums text-carbon-text md:text-5xl">
-                <AnimatedNumber value={stat.value} suffix={stat.suffix} reduced={reduced} />
-              </div>
-              <div className="mt-2 text-[12px] uppercase tracking-[0.1em] text-carbon-text-tertiary">
-                {stat.label}
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// Features Section
-function FeaturesSection() {
-  const features = [
-    {
-      icon: Network,
-      title: 'Dependency Risk Graph',
-      description:
-        'Visualize and analyze complex dependency chains to identify hidden vulnerabilities in your LLM supply chain.',
-      color: 'text-ibm-blue-40',
-      bgColor: 'bg-ibm-blue-60/10',
-    },
-    {
-      icon: GitPullRequest,
-      title: 'Real-time PR Scanning',
-      description:
-        'Automatically scan every pull request for prompt injection, jailbreaks, and data exfiltration before merge.',
-      color: 'text-ibm-purple-40',
-      bgColor: 'bg-ibm-purple-60/10',
-    },
-    {
-      icon: FileText,
-      title: 'Executive Risk Briefs',
-      description:
-        'Generate professional security reports with actionable insights for stakeholders and compliance teams.',
-      color: 'text-ibm-green-50',
-      bgColor: 'bg-ibm-green-50/10',
-    },
-  ]
-
-  return (
-    <section id="features" className="py-24">
-      <div className="mx-auto max-w-7xl px-6">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-100px' }}
-          variants={staggerContainer}
-        >
-          {/* Section header */}
-          <motion.div variants={fadeInUp} className="mb-16 text-center">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ibm-blue-40">
-              Core Features
-            </p>
-            <h2 className="mt-3 text-3xl font-light text-carbon-text md:text-4xl">
-              Enterprise-grade security for AI
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-carbon-text-secondary">
-              Built for security teams who need comprehensive visibility into their LLM pipelines
-            </p>
-          </motion.div>
-
-          {/* Feature cards */}
-          <div className="grid gap-6 md:grid-cols-3">
-            {features.map((feature) => (
-              <motion.div
-                key={feature.title}
-                variants={fadeInUp}
-                whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                className="group relative border border-carbon-border bg-ibm-gray-100 p-8 transition-colors hover:border-ibm-blue-60/40"
-              >
-                <div className="absolute left-0 top-0 h-full w-1 bg-carbon-border transition-all group-hover:bg-ibm-blue-60 group-hover:shadow-[0_0_12px_rgba(15,98,254,0.4)]" />
-                <div className={`mb-5 inline-flex h-12 w-12 items-center justify-center ${feature.bgColor}`}>
-                  <feature.icon className={`h-6 w-6 ${feature.color}`} />
-                </div>
-                <h3 className="text-lg font-medium text-carbon-text">{feature.title}</h3>
-                <p className="mt-3 text-[14px] leading-relaxed text-carbon-text-secondary">
-                  {feature.description}
-                </p>
-                <a
-                  href="#"
-                  className="mt-6 inline-flex items-center gap-1 text-[13px] text-ibm-blue-40 transition-colors hover:text-ibm-blue-30"
-                >
-                  Learn more
-                  <ChevronRight className="h-4 w-4" />
-                </a>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// Use Cases Section
-function UseCasesSection() {
-  const useCases = [
-    {
-      icon: Lock,
-      title: 'Secure Your AI Pipelines',
-      description: 'Prevent prompt injection and jailbreak attacks from compromising your production systems.',
-    },
-    {
-      icon: FileText,
-      title: 'Compliance & Governance',
-      description: 'Meet SOC 2, OWASP, and industry security standards with automated compliance reporting.',
-    },
-    {
-      icon: Target,
-      title: 'Red Team Simulations',
-      description: 'Test your defenses with adversarial attack simulations based on real-world threat patterns.',
-    },
-    {
-      icon: AlertTriangle,
-      title: 'Supply Chain Risk',
-      description: 'Monitor and assess risks from third-party LLM dependencies and model providers.',
-    },
-  ]
-
-  return (
-    <section id="use-cases" className="bg-ibm-gray-100/30 py-24">
-      <div className="mx-auto max-w-7xl px-6">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-100px' }}
-          variants={staggerContainer}
-        >
-          {/* Section header */}
-          <motion.div variants={fadeInUp} className="mb-16 text-center">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ibm-blue-40">
-              Use Cases
-            </p>
-            <h2 className="mt-3 text-3xl font-light text-carbon-text md:text-4xl">
-              Built for your security needs
-            </h2>
-          </motion.div>
-
-          {/* Use case cards */}
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {useCases.map((useCase, i) => (
-              <motion.div
-                key={useCase.title}
-                variants={fadeInUp}
-                whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
-                className="group border border-carbon-border bg-carbon-bg p-6 transition-colors hover:border-ibm-blue-60/40"
-              >
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center border border-carbon-border bg-ibm-gray-100 transition-colors group-hover:border-ibm-blue-60/40">
-                  <useCase.icon className="h-5 w-5 text-ibm-blue-40" />
-                </div>
-                <h3 className="text-[15px] font-medium text-carbon-text">{useCase.title}</h3>
-                <p className="mt-2 text-[13px] leading-relaxed text-carbon-text-secondary">
-                  {useCase.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// Integration Logos Section
-function IntegrationsSection() {
-  const integrations = [
-    { name: 'GitHub', icon: Github },
-    { name: 'Jira', icon: Workflow },
-    { name: 'Slack', icon: MessageSquare },
-    { name: 'IBM Watson', icon: Zap },
-  ]
-
-  return (
-    <section className="border-y border-carbon-border py-16">
-      <div className="mx-auto max-w-7xl px-6">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-100px' }}
-          variants={staggerContainer}
-          className="text-center"
-        >
-          <motion.p
-            variants={fadeInUp}
-            className="mb-10 text-[11px] font-medium uppercase tracking-[0.14em] text-carbon-text-tertiary"
+    <Reveal reduced={reduced} delay={0.24}>
+      <div className="mt-16 grid gap-8 border-t border-white/10 pt-8 text-white/96 sm:grid-cols-3 xl:grid-cols-6">
+        {TRUST_MARKS.map((mark) => (
+          <div
+            key={mark}
+            className="text-center text-[18px] font-semibold tracking-[0.04em] text-white/90 sm:text-left"
           >
-            Seamless Integrations
-          </motion.p>
-          <motion.div
-            variants={fadeInUp}
-            className="flex flex-wrap items-center justify-center gap-12"
-          >
-            {integrations.map((integration) => (
-              <div
-                key={integration.name}
-                className="flex items-center gap-2 text-carbon-text-secondary transition-colors hover:text-carbon-text"
-              >
-                <integration.icon className="h-6 w-6" />
-                <span className="text-sm font-medium">{integration.name}</span>
-              </div>
-            ))}
-          </motion.div>
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// CTA Section
-function CTASection({ onScan }) {
-  const [email, setEmail] = useState('')
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (email) {
-      onScan()
-    }
-  }
-
-  return (
-    <section className="py-24">
-      <div className="mx-auto max-w-7xl px-6">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-100px' }}
-          variants={staggerContainer}
-          className="relative overflow-hidden border border-carbon-border bg-ibm-gray-100 p-12 md:p-16"
-        >
-          {/* Background accent */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-ibm-blue-60/10 via-transparent to-ibm-purple-60/5" />
-
-          <div className="relative text-center">
-            <motion.p
-              variants={fadeInUp}
-              className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ibm-blue-40"
-            >
-              Get Started Today
-            </motion.p>
-            <motion.h2
-              variants={fadeInUp}
-              className="mt-4 text-3xl font-light text-carbon-text md:text-4xl"
-            >
-              Join 1000+ security teams
-            </motion.h2>
-            <motion.p
-              variants={fadeInUp}
-              className="mx-auto mt-4 max-w-lg text-carbon-text-secondary"
-            >
-              Start protecting your AI pipelines in minutes. No credit card required.
-            </motion.p>
-
-            {/* Email signup form */}
-            <motion.form
-              variants={fadeInUp}
-              onSubmit={handleSubmit}
-              className="mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row"
-            >
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your work email"
-                className="flex-1 border border-carbon-border bg-carbon-bg px-4 py-3 text-sm text-carbon-text placeholder:text-carbon-text-tertiary focus:border-ibm-blue-60 focus:outline-none"
-              />
-              <Button type="submit" size="lg" className="px-8">
-                Start Free Trial
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </motion.form>
-
-            {/* Trust note */}
-            <motion.p
-              variants={fadeInUp}
-              className="mt-6 text-[12px] text-carbon-text-tertiary"
-            >
-              Free 14-day trial. No credit card required.
-            </motion.p>
+            {mark}
           </div>
-        </motion.div>
-      </div>
-    </section>
-  )
-}
-
-// Threat Ticker
-function ThreatTicker({ reduced }) {
-  const threats = useMemo(
-    () => [
-      { text: 'PR #247 - prompt injection blocked', severity: 'critical', repo: 'acme/billing-api' },
-      { text: 'PR #103 - secret leak detected', severity: 'high', repo: 'acme/ml-pipeline' },
-      { text: 'PR #89 - jailbreak attempt flagged', severity: 'critical', repo: 'acme/chatbot-v2' },
-      { text: 'PR #312 - role confusion pattern found', severity: 'medium', repo: 'acme/auth-service' },
-      { text: 'PR #156 - data leakage via LLM context', severity: 'high', repo: 'acme/rag-engine' },
-      { text: 'PR #421 - unsafe template interpolation', severity: 'medium', repo: 'acme/agent-toolkit' },
-    ],
-    []
-  )
-
-  const doubled = useMemo(() => [...threats, ...threats], [threats])
-
-  const severityColors = {
-    critical: '#da1e28',
-    high: '#ff832b',
-    medium: '#f1c21b',
-  }
-
-  return (
-    <div className="relative overflow-hidden border-y border-carbon-border bg-ibm-gray-100/80">
-      <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-24 bg-gradient-to-r from-carbon-bg to-transparent" />
-      <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-24 bg-gradient-to-l from-carbon-bg to-transparent" />
-      <motion.div
-        className="flex gap-10 whitespace-nowrap px-6 py-3"
-        animate={reduced ? {} : { x: ['0%', '-50%'] }}
-        transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
-      >
-        {doubled.map((threat, i) => (
-          <span key={i} className="inline-flex items-center gap-2 text-[11px]">
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: severityColors[threat.severity] }}
-            />
-            <span className="font-mono text-carbon-text-tertiary">{threat.repo}</span>
-            <span className="text-carbon-text-secondary">{threat.text}</span>
-          </span>
         ))}
-      </motion.div>
-    </div>
+      </div>
+    </Reveal>
   )
 }
 
-// Footer
-function Footer() {
-  return (
-    <footer className="border-t border-carbon-border bg-carbon-bg py-12">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
-          <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-ibm-blue-40" />
-            <span className="text-sm font-medium text-carbon-text">PromptShield</span>
+function WorkflowVisual({ type }) {
+  if (type === 'steps') {
+    const rows = [
+      ['Collecting prompts', 'GitHub / Postman / App logs'],
+      ['Pulling context', 'Repo diff / policy / metadata'],
+      ['Analyzing with agent', 'Static + Claude semantic audit'],
+      ['Building findings', 'CWE / OWASP / evidence'],
+      ['Syncing deliverables', 'Checks / reports / audit trail'],
+    ]
+
+    return (
+      <div className="flex h-full flex-col justify-center px-8 py-10 text-white/38">
+        {rows.map(([label, sub]) => (
+          <div key={label} className="mb-4 flex items-start gap-3 last:mb-0">
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-white/28" />
+            <div>
+              <div className="text-[18px] font-medium tracking-[-0.03em] text-white/34">{label}</div>
+              <div className="mt-0.5 text-[14px] text-white/20">{sub}</div>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-6 text-[12px] text-carbon-text-tertiary">
-            <a href="#" className="transition-colors hover:text-carbon-text">
-              Documentation
-            </a>
-            <a href="#" className="transition-colors hover:text-carbon-text">
-              Privacy Policy
-            </a>
-            <a href="#" className="transition-colors hover:text-carbon-text">
-              Terms of Service
-            </a>
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 transition-colors hover:text-carbon-text"
-            >
-              GitHub
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
-          <div className="text-[11px] text-carbon-text-tertiary">
-            <span className="font-mono">Carbon Design System</span>
-          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (type === 'table') {
+    const rows = [
+      ['1', 'DIRECT_INJECTION', 'Critical', 'orange'],
+      ['2', 'SECRET_IN_PROMPT', 'High', 'gray'],
+      ['3', 'ROLE_CONFUSION', 'Medium', 'orange'],
+      ['4', 'DATA_LEAKAGE', 'High', 'gray'],
+    ]
+
+    return (
+      <div className="grid h-full place-items-center px-8 py-10">
+        <div className="w-full max-w-[520px] overflow-hidden border border-white/6 text-white/52">
+          {rows.map(([index, value, tag, tone]) => (
+            <div key={`${index}-${value}`} className="grid grid-cols-[80px,1fr,160px] border-b border-white/6 last:border-b-0">
+              <div className="border-r border-white/6 px-6 py-4 text-[22px]">{index}</div>
+              <div className="border-r border-white/6 px-6 py-4 font-mono text-[18px]">{value}</div>
+              <div className="px-6 py-3">
+                <span
+                  className={`inline-flex border px-3 py-1.5 text-[14px] font-medium ${
+                    tone === 'orange'
+                      ? 'border-[#ff7f50]/40 bg-[#ff7f50] text-white'
+                      : 'border-white/6 bg-white/16 text-white/76'
+                  }`}
+                >
+                  {tag}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-    </footer>
+    )
+  }
+
+  if (type === 'clauses') {
+    return (
+      <div className="relative h-full overflow-hidden px-10 py-10">
+        <div className="relative flex h-full flex-col justify-center gap-8">
+          {[
+            ['01', 'Indirect prompt injection'],
+            ['02', 'PII leakage risk'],
+            ['03', 'Unverified tool action'],
+          ].map(([index, label], rowIndex) => (
+            <div
+              key={index}
+              className={`flex items-center gap-3 ${rowIndex === 1 ? 'ml-12' : rowIndex === 2 ? 'ml-24' : ''}`}
+            >
+              <span className="rounded-[4px] bg-white px-2 py-1 text-[14px] font-semibold text-[#2b2825]">
+                {index}
+              </span>
+              <span className="rounded-[4px] border border-white/70 px-4 py-2 text-[18px] font-medium text-white/90">
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative flex h-full items-center justify-center overflow-hidden px-10 py-10">
+      <div className="relative flex w-full max-w-[420px] flex-col gap-8 text-white/92">
+        {[
+          { label: 'PromptShield Evidence Pack.pdf', tone: 'bg-[#ff7642]' },
+          { label: 'OWASP LLM Compliance.csv', tone: 'bg-[#43b26d]' },
+          { label: '.promptshield.yml Policy.pdf', tone: 'bg-[#5f95ff]' },
+        ].map((file) => (
+          <div
+            key={file.label}
+            className="glass-file flex items-center justify-between gap-4 border border-white/75 bg-white/10 px-5 py-3 text-[18px]"
+          >
+            <div className="flex min-w-0 items-center gap-4">
+              <span className={`h-3 w-3 ${file.tone}`} />
+              <span className="truncate">{file.label}</span>
+            </div>
+            <Download className="h-4 w-4 shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
-// Main Landing Page Component
+function WorkflowCard({ card, reduced, delay }) {
+  return (
+    <Reveal reduced={reduced} delay={delay} className="h-full">
+      <article className="workflow-card flex h-full flex-col border border-white/8 bg-[#0d1c31] text-white">
+        <div className="workflow-visual min-h-[360px] border-b border-white/8">
+          <WorkflowVisual type={card.visual} />
+        </div>
+        <div className="flex flex-1 flex-col px-8 pb-10 pt-7">
+          <GlassChip>{card.badge}</GlassChip>
+          <h3 className="mt-8 max-w-[20ch] text-[28px] font-medium leading-[1.12] tracking-[-0.04em] text-white">
+            {card.title}
+          </h3>
+          <p className="mt-5 max-w-[26ch] text-[18px] leading-[1.45] tracking-[-0.02em] text-white/44">
+            {card.description}
+          </p>
+        </div>
+      </article>
+    </Reveal>
+  )
+}
+
+function MetricCard({ item, reduced, delay }) {
+  return (
+    <Reveal reduced={reduced} delay={delay} className="h-full">
+      <div className="grid h-full gap-4">
+        <article className="liquid-panel flex min-h-[390px] flex-col overflow-hidden px-10 py-10 text-white">
+          <div className="font-display text-[clamp(5rem,8vw,8rem)] leading-[0.88] tracking-[-0.06em]">
+            {item.stat}
+          </div>
+          <div className="mt-auto max-w-[15ch] text-[20px] font-medium leading-[1.28] tracking-[-0.03em] text-white/90">
+            {item.label}
+          </div>
+        </article>
+        <article className="border border-white/8 bg-[#0b1527] px-8 py-8 text-white">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 text-[18px] tracking-[-0.03em]">
+              <span className="font-medium text-white/94">Before</span>
+              <span className="text-white/34">with PromptShield</span>
+            </div>
+            <span className="glass-chip border border-white/10 bg-white/5 px-4 py-2 text-[14px] text-white/46">
+              {item.badge}
+            </span>
+          </div>
+          <div className="mt-12 font-display text-[clamp(3.5rem,4vw,4.75rem)] leading-[0.95] tracking-[-0.05em] text-white/96">
+            {item.before}
+          </div>
+          <div className="mt-6 font-display text-[clamp(3rem,3.8vw,4.5rem)] leading-[0.95] tracking-[-0.05em] text-white/26">
+            {item.after}
+          </div>
+        </article>
+      </div>
+    </Reveal>
+  )
+}
+
+function TestimonialCard({ testimonial, reduced, delay }) {
+  return (
+    <Reveal reduced={reduced} delay={delay} className="h-full">
+      <article className="app-panel h-full px-8 py-7 text-[#eff6ff]">
+        <div className="text-[11px] uppercase tracking-[0.12em] text-[#8fb2e5]">{testimonial.label}</div>
+        <div className="mt-1 text-[22px] font-semibold tracking-[-0.03em]">{testimonial.metric}</div>
+        <p className="mt-6 max-w-[46ch] text-[21px] leading-[1.48] tracking-[-0.03em] text-[#c7d8f2]">
+          <span className="mr-1 text-[#7db2ff]">"</span>
+          {testimonial.quote}
+          <span className="ml-1 text-[#7db2ff]">"</span>
+        </p>
+        <div className="mt-9 flex items-center gap-3 text-[13px] text-[#90acd6]">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-[#12243d] text-[11px] font-semibold text-[#f3f7ff]">
+            {testimonial.name
+              .split(' ')
+              .map((part) => part[0])
+              .slice(0, 2)
+              .join('')}
+          </span>
+          <div>
+            <div className="font-semibold text-[#f3f7ff]">{testimonial.name}</div>
+            <div>{testimonial.title}</div>
+          </div>
+        </div>
+      </article>
+    </Reveal>
+  )
+}
+
 export default function LandingPage({ onEnterDashboard, onEnterScan }) {
   const reduced = useReducedMotion()
 
   return (
-    <div className="min-h-screen bg-carbon-bg">
-      <Navigation onScan={onEnterScan} onDashboard={onEnterDashboard} />
-      <HeroSection onScan={onEnterScan} onDashboard={onEnterDashboard} reduced={reduced} />
-      <ThreatTicker reduced={reduced} />
-      <StatisticsSection reduced={reduced} />
-      <FeaturesSection />
-      <UseCasesSection />
-      <IntegrationsSection />
-      <CTASection onScan={onEnterScan} />
-      <Footer />
+    <div className="landing-shell font-body text-white">
+      <section className="liquid-surface border-b border-white/10">
+        <div className="mx-auto flex min-h-screen max-w-[1700px] flex-col px-6 pb-10 pt-6 sm:px-10 lg:px-12">
+          <div className="landing-ibm-header flex items-center justify-between gap-4 px-4 py-3">
+            <button
+              onClick={() => scrollToSection('hero', reduced)}
+              className="landing-ibm-logo px-4 py-2 text-[13px] font-semibold tracking-[0.08em] text-white/90 transition-colors"
+            >
+              PromptShield
+            </button>
+            <div className="hidden items-center gap-2 lg:flex">
+              <button
+                onClick={() => scrollToSection('workflows', reduced)}
+                className="landing-ibm-nav px-4 py-2 text-[13px] text-white/75 transition-colors hover:text-white"
+              >
+                Platform
+              </button>
+              <button
+                onClick={() => scrollToSection('proof', reduced)}
+                className="landing-ibm-nav px-4 py-2 text-[13px] text-white/75 transition-colors hover:text-white"
+              >
+                Outcomes
+              </button>
+              <button
+                onClick={() => scrollToSection('security', reduced)}
+                className="landing-ibm-nav px-4 py-2 text-[13px] text-white/75 transition-colors hover:text-white"
+              >
+                Security
+              </button>
+              <LiquidButton onClick={onEnterScan} tone="dark">
+                Run a live scan
+              </LiquidButton>
+              <LiquidButton onClick={onEnterDashboard} icon>
+                Access dashboard
+              </LiquidButton>
+            </div>
+          </div>
+
+          <div id="hero" className="flex flex-1 items-center justify-center py-20 sm:py-24 lg:py-16">
+            <Reveal reduced={reduced} className="flex w-full max-w-[1040px] flex-col items-center">
+              <div className="mb-8 inline-flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-white/76">
+                <Sparkles className="h-4 w-4" strokeWidth={2} />
+                <span>Institutional AI orchestration</span>
+              </div>
+              <h1 className="mx-auto max-w-[12ch] text-center font-display text-[clamp(4.1rem,7.4vw,8.6rem)] leading-[0.92] tracking-[-0.065em]">
+                <span className="block text-white/52">Prompt security</span>
+                <span className="block text-white">before risky AI changes merge.</span>
+              </h1>
+              <p className="mx-auto mt-10 max-w-[900px] text-center text-[clamp(1.25rem,2.1vw,1.9rem)] leading-[1.35] tracking-[-0.04em] text-white/82">
+                PromptShield scans prompts and code in pull requests, runs static plus Claude-powered semantic analysis in parallel, maps findings to CWE and the OWASP LLM Top 10, and turns review into a policy gate instead of a last-minute scramble.
+              </p>
+              <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
+                <LiquidButton onClick={onEnterDashboard}>Access dashboard</LiquidButton>
+                <LiquidButton onClick={() => scrollToSection('workflows', reduced)} tone="dark" icon>
+                  See workflows
+                </LiquidButton>
+              </div>
+            </Reveal>
+          </div>
+
+          <HeroTrustRow reduced={reduced} />
+        </div>
+      </section>
+
+      <section id="workflows" className="bg-[#07111d] px-6 py-16 sm:px-10 lg:px-12 lg:py-20">
+        <div className="mx-auto max-w-[1800px]">
+          <Reveal reduced={reduced}>
+            <h2 className="max-w-[1080px] text-[clamp(2.75rem,5vw,4.3rem)] font-medium leading-[1.02] tracking-[-0.06em] text-white">
+              What PromptShield already does in this repo.
+            </h2>
+          </Reveal>
+          <div className="mt-12 grid gap-4 xl:grid-cols-4">
+            {WORKFLOW_CARDS.map((card, index) => (
+              <WorkflowCard key={card.id} card={card} reduced={reduced} delay={index * 0.08} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-[#07111d] px-6 pb-6 sm:px-10 lg:px-12 lg:pb-10">
+        <div className="mx-auto max-w-[1800px]">
+          <div className="grid gap-4 xl:grid-cols-3">
+            {METRICS.map((item, index) => (
+              <MetricCard key={item.stat} item={item} reduced={reduced} delay={index * 0.08} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="proof" className="bg-[#07111d] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
+        <div className="mx-auto max-w-[1700px] overflow-hidden text-[#e9f3ff]">
+          <div className="grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-2">
+            {TESTIMONIALS.map((testimonial, index) => (
+              <TestimonialCard
+                key={testimonial.name}
+                testimonial={testimonial}
+                reduced={reduced}
+                delay={index * 0.08}
+              />
+            ))}
+          </div>
+
+          <Reveal reduced={reduced} className="app-panel mt-4 overflow-x-auto border-b border-transparent">
+            <div className="min-w-[920px] px-4 py-4 sm:px-6">
+              <div className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 px-4 py-3 text-[11px] uppercase tracking-[0.12em] text-[#84a2cc]">
+                <div />
+                <div>Before</div>
+                <div>With PromptShield</div>
+                <div>Result</div>
+              </div>
+              {RESULTS.map((row) => (
+                <div
+                  key={row.workflow}
+                  className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 border-t border-white/8 px-4 py-4"
+                >
+                  <div>
+                    <div className="text-[15px] font-medium tracking-[-0.02em] text-[#f4f8ff]">
+                      {row.workflow}
+                    </div>
+                  </div>
+                  <div className="text-[13px] leading-[1.35] text-[#88a2ca]">
+                    <div className="text-[11px] uppercase tracking-[0.1em]">{row.beforeLabel}</div>
+                    <div className="mt-1 text-[#c8d8f0]">{row.before}</div>
+                  </div>
+                  <div className="text-[13px] leading-[1.35] text-[#88a2ca]">
+                    <div className="text-[11px] uppercase tracking-[0.1em]">{row.afterLabel}</div>
+                    <div className="mt-1 font-medium text-[#eff6ff]">{row.after}</div>
+                  </div>
+                  <div className="text-[13px] leading-[1.35] text-[#6cabff]">{row.result}</div>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+
+          <div className="mt-4 grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-3">
+            {OUTCOMES.map((outcome, index) => (
+              <Reveal key={outcome.title} reduced={reduced} delay={index * 0.08} className="h-full">
+                <article className="app-panel flex h-full flex-col px-6 py-6 lg:px-7">
+                  <h3 className="max-w-[22ch] text-[21px] leading-[1.2] tracking-[-0.03em] text-[#f5f8ff]">
+                    {outcome.title}
+                  </h3>
+                  <div className="mt-16 text-[42px] font-medium tracking-[-0.05em] text-[#6cabff]">
+                    {outcome.stat}
+                  </div>
+                  <div className="mt-1 text-[13px] text-[#8eaad2]">{outcome.detail}</div>
+                </article>
+              </Reveal>
+            ))}
+          </div>
+
+          <div id="security" className="grid gap-8 px-6 py-7 sm:px-8 lg:grid-cols-[1.3fr,1fr] lg:gap-12">
+            <Reveal reduced={reduced}>
+              <div className="flex items-center gap-3 text-[24px] font-medium tracking-[-0.04em] text-[#eff6ff]">
+                <ShieldCheck className="h-5 w-5 text-[#eff6ff]" />
+                <span>Enterprise-grade security</span>
+              </div>
+              <p className="mt-3 max-w-[64ch] text-[15px] leading-[1.6] text-[#93add4]">
+                Your data stays yours. PromptShield keeps review artifacts isolated, preserves auditability, and never trains on your private releases.
+              </p>
+              <button className="mt-5 inline-flex items-center gap-2 text-[13px] font-semibold tracking-[-0.02em] text-[#d6e5ff]">
+                <span>Security &amp; Trust Center</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </Reveal>
+
+            <Reveal reduced={reduced} delay={0.08}>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                {SECURITY_BADGES.map((badge) => (
+                  <div
+                    key={badge}
+                    className="app-panel-soft grid min-h-[92px] place-items-center px-3 text-center text-[14px] font-semibold tracking-[0.04em] text-[#e7f2ff]"
+                  >
+                    {badge}
+                  </div>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+
+          <Reveal reduced={reduced} className="border-t border-white/10 px-5 py-4 sm:px-8">
+            <div className="grid gap-3 text-[12px] text-[#93add4] sm:grid-cols-2 xl:grid-cols-6">
+              {[
+                'Audited & tested',
+                'Fine-grained access controls',
+                'Modern secure practices',
+                'Audit logs across every workflow',
+                'No training on your data',
+                'Regional deployment options',
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#7eb5ff]" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="liquid-surface border-t border-white/10">
+        <div className="mx-auto max-w-[1700px] px-6 py-20 sm:px-10 lg:px-12 lg:py-24">
+          <Reveal reduced={reduced}>
+            <div className="inline-flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-white/78">
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2.1} />
+              <span>Precision AI for institutional workflows</span>
+            </div>
+            <h2 className="mt-8 max-w-[720px] text-[clamp(3.4rem,6vw,6.4rem)] font-medium leading-[0.94] tracking-[-0.06em] text-white">
+              Build once.
+              <br />
+              Review across the team.
+              <br />
+              Improve over time.
+            </h2>
+            <div className="mt-10">
+              <LiquidButton onClick={onEnterDashboard}>Access dashboard</LiquidButton>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      <footer className="bg-[#08111d] px-6 py-12 text-white/78 sm:px-10 lg:px-12 lg:py-14">
+        <div className="mx-auto grid max-w-[1700px] gap-12 lg:grid-cols-[1.15fr_repeat(4,0.8fr)]">
+          <div>
+            <div className="text-[22px] font-semibold tracking-[0.08em] text-white">PS</div>
+            <div className="mt-8 max-w-[12ch] text-[clamp(2rem,3vw,3.2rem)] leading-[1.02] tracking-[-0.05em] text-white">
+              Prompt security purpose-built for AI code review.
+            </div>
+            <div className="mt-8">
+              <LiquidButton onClick={onEnterDashboard}>Access dashboard</LiquidButton>
+            </div>
+          </div>
+
+          {FOOTER_COLUMNS.map((column) => (
+            <div key={column.heading}>
+              <h3 className="text-[13px] font-semibold tracking-[0.02em] text-white">{column.heading}</h3>
+              <div className="mt-4 space-y-3 text-[13px] text-white/48">
+                {column.links.map((link) => (
+                  <div key={link}>{link}</div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </footer>
     </div>
   )
 }
