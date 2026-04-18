@@ -15,10 +15,10 @@ function fmt(ts) {
 }
 
 function scoreColor(s) {
-  if (s <= 30) return '#198038'
-  if (s <= 60) return '#8a6800'
-  if (s <= 85) return '#b8470c'
-  return '#a2191f'
+  if (s <= 30) return '#5ec8ff'
+  if (s <= 60) return '#ffd86e'
+  if (s <= 85) return '#ff9b52'
+  return '#ff5b73'
 }
 
 function PRScanRow({ scan, threshold = 70, onSelect }) {
@@ -27,22 +27,22 @@ function PRScanRow({ scan, threshold = 70, onSelect }) {
   return (
     <tr
       onClick={() => onSelect?.(scan.id)}
-      className="cursor-pointer border-b border-carbon-border bg-white transition-colors hover:bg-ibm-blue-10 dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:hover:bg-ibm-blue-90/30"
+      className="app-table-row terminal-mono cursor-pointer border-b border-white/8 bg-transparent"
     >
-      <td className="px-4 py-3 text-sm text-carbon-text dark:text-ibm-gray-10">
+      <td className="px-4 py-3 text-sm text-[#eef5ff]">
         <div className="flex flex-col">
           <span className="font-medium">{scan.repo_full_name || '—'}</span>
           {scan.pr_title && (
-            <span className="mt-0.5 truncate text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+            <span className="mt-0.5 truncate text-[11px] text-[#8da7cd]">
               {scan.pr_title}
             </span>
           )}
         </div>
       </td>
-      <td className="px-4 py-3 font-mono text-sm text-carbon-text-secondary dark:text-ibm-gray-30">
+      <td className="px-4 py-3 font-mono text-sm text-[#bfd0ef]">
         #{scan.pr_number ?? '—'}
       </td>
-      <td className="px-4 py-3 font-mono text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+      <td className="px-4 py-3 font-mono text-[11px] text-[#8da7cd]">
         {sha || '—'}
       </td>
       <td
@@ -53,20 +53,20 @@ function PRScanRow({ scan, threshold = 70, onSelect }) {
       </td>
       <td className="px-4 py-3">
         <span
-          className={`inline-flex items-center gap-1.5 border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${
+          className={`inline-flex items-center gap-1.5 border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${
             failed
-              ? 'border-[#ffd7d9] bg-[#fff1f1] text-[#a2191f]'
-              : 'border-[#a7f0ba] bg-[#defbe6] text-[#0e6027]'
+              ? 'border-[#ff7d8f]/30 bg-[#ff5b73]/10 text-[#ffb7c2]'
+              : 'border-[#5ec8ff]/25 bg-[#5ec8ff]/10 text-[#b3eaff]'
           }`}
         >
           <span
-            className="h-1.5 w-1.5"
-            style={{ background: failed ? '#da1e28' : '#24a148' }}
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: failed ? '#ff5b73' : '#5ec8ff' }}
           />
           {failed ? 'Gate failed' : 'Passing'}
         </span>
       </td>
-      <td className="px-4 py-3 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+      <td className="px-4 py-3 text-[11px] text-[#8da7cd]">
         {fmt(scan.created_at)}
       </td>
       <td className="px-4 py-3 text-right">
@@ -76,7 +76,7 @@ function PRScanRow({ scan, threshold = 70, onSelect }) {
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="text-[11px] font-medium text-ibm-blue-70 hover:text-ibm-blue-80 dark:text-ibm-blue-30 dark:hover:text-ibm-blue-20"
+            className="text-[11px] font-medium text-[#8fbcff] hover:text-white"
           >
             GitHub ↗
           </a>
