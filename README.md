@@ -138,6 +138,18 @@ Expected after config is complete:
 {"status":"ok","version":"0.3.0","github_app_configured":true}
 ```
 
+### 7. Troubleshooting checklist
+
+If PR scans are not showing up, verify each item in order:
+
+1. `GET /api/health` returns `"github_app_configured": true`.
+2. App is **installed** on the target repository (not just created).
+3. Webhook delivery in GitHub App settings shows `2xx` responses.
+4. `GITHUB_WEBHOOK_SECRET` in `backend/.env` matches the App webhook secret.
+5. Private key path is valid and readable by backend process.
+6. Webhook forwarding (`ngrok`/`smee`) points to `http://localhost:8000/api/github/webhook`.
+7. PR contains new/changed lines; PromptShield only comments on added diff lines.
+
 Run tests:
 ```bash
 npm test
@@ -210,40 +222,4 @@ Click **Load demo** on the scan page for a single prompt that triggers every sev
 
 ## GitHub App (real-time PR scanning)
 
-PromptShield ships a GitHub App that auto-reviews every pull request: it scans only the lines the author added, posts inline review comments on risky prompt code, and writes a **Check Run** that can block merges when the risk score crosses `RISK_GATE_THRESHOLD` (default `70`). Every PR scan also lands in the **Dashboard** tab of the React app alongside web scans.
-
-### 1. Create the GitHub App
-
-Go to https://github.com/settings/apps/new and configure:
-
-- **Webhook URL** — `https://YOUR_PUBLIC_HOST/api/github/webhook` (use `smee.io` or `ngrok` for local dev).
-- **Webhook secret** — a strong random string. Set the same value as `GITHUB_WEBHOOK_SECRET`.
-- **Repository permissions** — Pull requests: **Read & write**, Checks: **Read & write**, Contents: **Read-only**, Metadata: **Read-only**.
-- **Subscribe to events** — `Pull request`.
-- After creating, **Generate a private key** (downloads a `.pem`).
-
-Install the App on a test repo from the App's **Install App** tab.
-
-### 2. Set the env vars
-
-Add to `backend/.env`:
-
-```env
-GITHUB_APP_ID=123456
-GITHUB_APP_PRIVATE_KEY_PATH=/abs/path/to/your-app.private-key.pem
-# or paste the PEM inline:
-# GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
-GITHUB_WEBHOOK_SECRET=your-webhook-secret
-RISK_GATE_THRESHOLD=70
-DASHBOARD_BASE_URL=https://your-dashboard.example.com
-```
-
-`GET /api/health` returns `"github_app_configured": true` once all three (App ID, private key, webhook secret) are set.
-
-### 3. Try it
-
-Open a PR that adds a vulnerable prompt (e.g. one of the demo strings). Within a few seconds:
-
-- Inline review comments appear **only on lines you added** (never on unchanged code).
-- A `PromptShield` Check Run shows the risk score and fails the gate when it crosses the threshold.
-- A new row appears in the **Dashboard** tab; click it to load the full report.
+PromptShield ships a GitHub App that auto-reviews pull requests, comments on risky lines, and creates a Check Run gate. For full setup instructions, see **GitHub App setup (PR review bot)** above.
