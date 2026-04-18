@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import ScanPage from './pages/ScanPage.jsx'
 import ReportPage from './pages/ReportPage.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
@@ -10,20 +11,24 @@ import EnterprisePage from './pages/EnterprisePage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
 import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
-import AuthBadge from './components/AuthBadge.jsx'
-import { AuthProvider } from './auth/AuthContext.jsx'
+import { AuthProvider, useAuth } from './auth/AuthContext.jsx'
 import { fetchWithTimeout, asNetworkErrorMessage } from './lib/fetchWithTimeout.js'
 
 const API = ''
 
-const NAV = [
-  { id: 'home', label: 'Home' },
+const WORKSPACE_NAV = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'compliance', label: 'Compliance' },
   { id: 'pm', label: 'PM' },
   { id: 'policy', label: 'Policy' },
   { id: 'enterprise', label: 'Enterprise' },
   { id: 'scan', label: 'Scan' },
+]
+
+const LANDING_NAV = [
+  { label: 'Platform', section: 'workflows' },
+  { label: 'Outcomes', section: 'proof' },
+  { label: 'Security', section: 'security' },
 ]
 
 export default function App() {
@@ -40,7 +45,9 @@ function AppShell() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [pendingHomeSection, setPendingHomeSection] = useState(null)
   useTheme()
+  const { user, logout, loading: authLoading } = useAuth()
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -104,6 +111,22 @@ function AppShell() {
   const isHome = view === 'home'
   const showSidebar = view !== 'home' && view !== 'login'
   const goLogin = () => setView('login')
+  const goHomeSection = useCallback((section) => {
+    setPendingHomeSection(section)
+    setView('home')
+  }, [])
+
+  useEffect(() => {
+    if (view !== 'home' || !pendingHomeSection) return
+
+    const timer = window.setTimeout(() => {
+      const node = document.getElementById(pendingHomeSection)
+      node?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setPendingHomeSection(null)
+    }, 60)
+
+    return () => window.clearTimeout(timer)
+  }, [view, pendingHomeSection])
 
   return (
     <div
@@ -111,77 +134,94 @@ function AppShell() {
         isHome ? 'bg-[#07111d] text-white' : 'app-shell bg-carbon-bg text-carbon-text'
       }`}
     >
-      {!isHome && (
-        <header className="app-header flex h-14 items-stretch border-b border-carbon-border text-ibm-gray-100">
+      <header className="shared-topbar sticky top-0 z-40 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="shared-topbar-shell mx-auto flex max-w-[1680px] items-center gap-3 px-4 py-2.5">
           <button
             onClick={() => setView('home')}
-            className="flex items-center gap-3 border-r border-carbon-border px-5 transition-colors hover:bg-white/5"
+            className="shared-topbar-brand flex items-center gap-3 text-left"
           >
-            <span
-              aria-hidden
-              className="font-display text-[24px] font-semibold tracking-[-0.06em] text-white"
-            >
+            <span className="font-display text-[20px] font-semibold tracking-[-0.06em] text-white">
               PS
             </span>
-            <span className="flex flex-col items-start leading-tight">
-              <span className="terminal-mono text-[14px] font-semibold tracking-[-0.02em] text-white">
-                PromptShield
-              </span>
-              <span className="terminal-label text-[9px] font-medium text-[#89a8d5]">
-                AI Security Control Plane
-              </span>
+            <span className="hidden terminal-mono text-[13px] font-semibold tracking-[-0.02em] text-white sm:inline">
+              PromptShield
             </span>
           </button>
-          <div className="terminal-mono hidden min-w-[160px] items-center border-r border-carbon-border px-4 text-[12px] text-[#8aa6d2] md:flex">
-            Frontend command center
-          </div>
-          <nav className="flex items-center gap-2 px-3 text-[13px]">
-            {NAV.map((item) => (
+
+          <nav className="hidden items-center gap-1 lg:flex">
+            {LANDING_NAV.map((item) => (
               <button
-                key={item.id}
-                onClick={() => setView(item.id)}
-                className={`app-pill terminal-mono px-4 py-2 transition-colors ${
-                  view === item.id
-                    ? 'border-[#88b6ff] bg-[#14305a] text-white'
-                    : 'text-[#aac3e8] hover:bg-white/8 hover:text-white'
-                }`}
+                key={item.section}
+                onClick={() => goHomeSection(item.section)}
+                className="shared-topbar-link"
               >
                 {item.label}
               </button>
             ))}
-            <button
-              onClick={() => report && setView('report')}
-              disabled={!report}
-              className={`app-pill terminal-mono px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:text-carbon-text-tertiary ${
-                view === 'report'
-                  ? 'border-[#88b6ff] bg-[#14305a] text-white'
-                  : 'text-[#aac3e8] hover:bg-white/8 hover:text-white'
-              }`}
-            >
-              Report
-              {report && (
-                <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#4b8dff] px-1.5 text-[11px] font-semibold text-white">
-                  {report.total_count}
-                </span>
-              )}
-            </button>
           </nav>
-          <div className="ml-auto flex items-center gap-3 border-l border-carbon-border px-4 text-[11px] text-[#aac3e8]">
-            <span className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#5ec8ff]" />
-              <span>API connected</span>
-            </span>
-            <span className="hidden font-mono uppercase tracking-wider md:inline">
-              v0.3.0
-            </span>
-            <AuthBadge onSignIn={goLogin} />
+
+          <div className="ml-auto flex items-center gap-2">
+            <details className="shared-topbar-dropdown group relative">
+              <summary className="shared-topbar-link shared-topbar-summary list-none">
+                <span>Workspace</span>
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="shared-topbar-menu">
+                {WORKSPACE_NAV.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setView(item.id)}
+                    className={`shared-topbar-menu-item ${view === item.id ? 'is-active' : ''}`}
+                  >
+                    <span>{item.label}</span>
+                    {item.id === 'report' && report ? (
+                      <span className="shared-topbar-count">{report.total_count}</span>
+                    ) : null}
+                  </button>
+                ))}
+                <button
+                  onClick={() => report && setView('report')}
+                  disabled={!report}
+                  className={`shared-topbar-menu-item ${view === 'report' ? 'is-active' : ''}`}
+                >
+                  <span>Report</span>
+                  {report ? <span className="shared-topbar-count">{report.total_count}</span> : null}
+                </button>
+              </div>
+            </details>
+
+            {!authLoading && !user ? (
+              <button onClick={goLogin} className="shared-topbar-ghost">
+                Log in
+              </button>
+            ) : null}
+
+            {!authLoading && user ? (
+              <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-[#08111d] px-3 py-2 text-[11px] text-[#c5d9f7] md:flex">
+                <span className="font-medium text-white">{user.name}</span>
+                <span className="rounded-full border border-white/10 px-2 py-0.5 uppercase tracking-[0.12em] text-[#8db4ff]">
+                  {user.role}
+                </span>
+                <button onClick={logout} className="text-[#8eaad2] transition-colors hover:text-white">
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+
+            <button
+              onClick={() => setView(isHome ? 'dashboard' : 'home')}
+              className="shared-topbar-cta"
+            >
+              {isHome ? 'Access dashboard' : 'Back to home'}
+            </button>
+
             <ThemeToggle />
           </div>
-        </header>
-      )}
+        </div>
+      </header>
 
       <div
-        className={`grid flex-1 grid-cols-1 ${showSidebar ? 'lg:grid-cols-[1fr,300px]' : ''}`}
+        className={`grid flex-1 grid-cols-1 ${showSidebar ? 'lg:grid-cols-[minmax(0,1fr),272px]' : ''}`}
       >
         <main className={`overflow-y-auto ${isHome ? 'bg-[#07111d]' : 'bg-carbon-bg'}`}>
           {error && (

@@ -600,54 +600,9 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
   return (
     <div className="landing-shell font-body text-white">
       <section className="liquid-surface border-b border-white/10">
-        <div className="mx-auto flex min-h-screen max-w-[1700px] flex-col px-6 pb-10 pt-6 sm:px-10 lg:px-12">
-          <div className="landing-ibm-header flex items-center justify-between gap-4 px-4 py-3">
-            <button
-              onClick={() => scrollToSection('hero', reduced)}
-              className="landing-ibm-logo flex flex-col items-start px-4 py-3 text-left transition-colors"
-            >
-              <span className="font-pixel text-[11px] leading-none text-[#dfeaff]">PROMPTSHIELD</span>
-              <span className="font-condensed mt-2 text-[10px] uppercase tracking-[0.24em] text-[#78a9ff]">
-                pr prompt security gate
-              </span>
-              <span className="font-condensed mt-1 text-[11px] uppercase tracking-[0.12em] text-[#5f7eaf]">
-                scan early / ship safer
-              </span>
-            </button>
-            <div className="hidden items-center gap-2 lg:flex">
-              <button
-                onClick={() => scrollToSection('workflows', reduced)}
-                className="landing-ibm-nav px-4 py-2 text-[13px] text-white/75 transition-colors hover:text-white"
-              >
-                Platform
-              </button>
-              <button
-                onClick={() => scrollToSection('proof', reduced)}
-                className="landing-ibm-nav px-4 py-2 text-[13px] text-white/75 transition-colors hover:text-white"
-              >
-                Outcomes
-              </button>
-              <button
-                onClick={() => scrollToSection('security', reduced)}
-                className="landing-ibm-nav px-4 py-2 text-[13px] text-white/75 transition-colors hover:text-white"
-              >
-                Security
-              </button>
-              <LiquidButton onClick={onEnterScan} tone="dark">
-                Run a live scan
-              </LiquidButton>
-              <LiquidButton onClick={onEnterDashboard} icon>
-                Access dashboard
-              </LiquidButton>
-            </div>
-          </div>
-
+        <div className="mx-auto flex min-h-screen max-w-[1700px] flex-col px-6 pb-10 pt-10 sm:px-10 sm:pt-12 lg:px-12 lg:pt-14">
           <div id="hero" className="flex flex-1 items-center justify-center py-20 sm:py-24 lg:py-16">
             <Reveal reduced={reduced} className="flex w-full max-w-[1040px] flex-col items-center">
-              <div className="terminal-label mb-8 inline-flex items-center gap-2 text-[10px] font-medium text-[#78a9ff]">
-                <Sparkles className="h-4 w-4" strokeWidth={2} />
-                <span>shift-left ai security</span>
-              </div>
               <h1 className="terminal-mono mx-auto max-w-[18ch] text-center text-[clamp(2rem,4.7vw,4.4rem)] font-semibold uppercase leading-[1.08] tracking-[-0.03em] text-[#eef5ff]">
                 Prompt security
                 <br />
