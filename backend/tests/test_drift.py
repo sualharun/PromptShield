@@ -5,7 +5,7 @@ import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///")
 
-from database import Base, engine, init_db
+from database import Base, engine, init_db, safe_create_all
 from models import BaselineFinding
 from database import SessionLocal
 from drift import (
@@ -20,7 +20,7 @@ from drift import (
 @pytest.fixture(autouse=True)
 def _setup():
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    safe_create_all()
 
 
 def _db():

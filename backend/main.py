@@ -122,8 +122,8 @@ def on_startup():
     init_db()
     # Create new tables from models.py
     from models import Organization, OrgMember, ApiKey, PolicyVersion, ScanJob, EvalRun, BaselineFinding
-    from database import Base, engine
-    Base.metadata.create_all(bind=engine)
+    from database import safe_create_all
+    safe_create_all()
 
     from database import SessionLocal
     db = SessionLocal()

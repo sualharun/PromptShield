@@ -328,8 +328,26 @@ def _apply_additive_migrations() -> None:
         )
 
 
+def safe_create_all():
+    """Create all tables, tolerating 'index already exists' on SQLite."""
+    if settings.DATABASE_URL.startswith("sqlite"):
+        for table in Base.metadata.sorted_tables:
+            try:
+                table.create(bind=engine, checkfirst=True)
+            except Exception:
+                pass
+        for table in Base.metadata.sorted_tables:
+            for idx in table.indexes:
+                try:
+                    idx.create(bind=engine)
+                except Exception:
+                    pass
+    else:
+        Base.metadata.create_all(bind=engine)
+
+
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    safe_create_all()
     _apply_additive_migrations()
 
 

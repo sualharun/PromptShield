@@ -5,7 +5,7 @@ import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///")
 
-from database import Base, engine
+from database import Base, engine, safe_create_all
 from models import PolicyVersion
 from database import SessionLocal
 from policy_engine import (
@@ -20,7 +20,7 @@ from policy_engine import (
 @pytest.fixture(autouse=True)
 def _setup():
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    safe_create_all()
 
 
 SIMPLE_POLICY = """

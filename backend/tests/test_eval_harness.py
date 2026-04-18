@@ -5,7 +5,7 @@ import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///")
 
-from database import Base, engine, SessionLocal
+from database import Base, engine, SessionLocal, safe_create_all
 from models import EvalRun
 from eval_harness import run_eval, list_eval_runs
 
@@ -13,7 +13,7 @@ from eval_harness import run_eval, list_eval_runs
 @pytest.fixture(autouse=True)
 def _setup():
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    safe_create_all()
 
 
 def test_run_eval_returns_metrics():

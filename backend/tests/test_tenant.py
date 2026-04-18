@@ -7,10 +7,10 @@ from fastapi.testclient import TestClient
 @pytest.fixture(autouse=True)
 def _setup(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///")
-    from database import Base, engine, init_db
+    from database import Base, engine, init_db, safe_create_all
     from models import Organization, OrgMember, ApiKey, PolicyVersion, ScanJob, EvalRun, BaselineFinding
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    safe_create_all()
     init_db()
 
 
