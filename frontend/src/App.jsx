@@ -7,6 +7,7 @@ import CompliancePage from './pages/CompliancePage.jsx'
 import PMPage from './pages/PMPage.jsx'
 import PolicyPage from './pages/PolicyPage.jsx'
 import EnterprisePage from './pages/EnterprisePage.jsx'
+import AtlasInsightsPage from './pages/AtlasInsightsPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
 import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
@@ -23,6 +24,7 @@ const NAV = [
   { id: 'pm', label: 'PM' },
   { id: 'policy', label: 'Policy' },
   { id: 'enterprise', label: 'Enterprise' },
+  { id: 'atlas', label: '◆ Atlas' },
   { id: 'scan', label: 'Scan' },
 ]
 
@@ -194,6 +196,7 @@ function AppShell() {
           {view === 'pm' && <PMPage onSignIn={goLogin} />}
           {view === 'policy' && <PolicyPage />}
           {view === 'enterprise' && <EnterprisePage />}
+          {view === 'atlas' && <AtlasInsightsPage />}
           {view === 'login' && (
             <LoginPage onLoggedIn={() => setView('pm')} />
           )}

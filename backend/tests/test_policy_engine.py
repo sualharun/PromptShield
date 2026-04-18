@@ -1,13 +1,7 @@
 """Tests for the enhanced policy engine: versioning, simulation, and diff."""
 
-import os
 import pytest
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///")
-
-from database import Base, engine
-from models import PolicyVersion
-from database import SessionLocal
 from policy_engine import (
     save_policy_version,
     get_active_policy,
@@ -19,8 +13,8 @@ from policy_engine import (
 
 @pytest.fixture(autouse=True)
 def _setup():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    from mongo import C, col
+    col(C.POLICY_VERSIONS).delete_many({})
 
 
 SIMPLE_POLICY = """
@@ -42,46 +36,39 @@ ignore:
 
 
 def test_save_and_retrieve_version():
-    db = SessionLocal()
-    try:
-        result = save_policy_version(db, SIMPLE_POLICY)
-        assert result["version"] == 1
-        assert result["policy"]["min_score"] == 70
+    result = save_policy_version(None, SIMPLE_POLICY)
+    assert result["version"] == 1
+    assert result["policy"]["min_score"] == 70
 
-        active = get_active_policy(db)
-        assert active is not None
-        assert active["version"] == 1
-    finally:
-        db.close()
+    active = get_active_policy(None)
+    assert active is not None
+    assert active["version"] == 1
 
 
 def test_version_increment_and_deactivation():
-    db = SessionLocal()
-    try:
-        save_policy_version(db, SIMPLE_POLICY)
-        result2 = save_policy_version(db, UPDATED_POLICY, change_summary="Raised threshold")
-        assert result2["version"] == 2
+    from mongo import C, col
 
-        active = get_active_policy(db)
-        assert active["version"] == 2
+    save_policy_version(None, SIMPLE_POLICY)
+    result2 = save_policy_version(None, UPDATED_POLICY, change_summary="Raised threshold")
+    assert result2["version"] == 2
 
-        old = db.query(PolicyVersion).filter(PolicyVersion.version == 1).first()
-        assert old.is_active is False
-    finally:
-        db.close()
+    active = get_active_policy(None)
+    assert active["version"] == 2
+
+    old = col(C.POLICY_VERSIONS).find_one(
+        {"version": 1, "repo_full_name": None, "org_id": None}
+    )
+    assert old is not None
+    assert bool(old.get("is_active")) is False
 
 
 def test_list_versions():
-    db = SessionLocal()
-    try:
-        save_policy_version(db, SIMPLE_POLICY)
-        save_policy_version(db, UPDATED_POLICY)
-        versions = list_policy_versions(db)
-        assert len(versions) == 2
-        assert versions[0]["version"] == 2
-        assert versions[1]["version"] == 1
-    finally:
-        db.close()
+    save_policy_version(None, SIMPLE_POLICY)
+    save_policy_version(None, UPDATED_POLICY)
+    versions = list_policy_versions(None)
+    assert len(versions) == 2
+    assert versions[0]["version"] == 2
+    assert versions[1]["version"] == 1
 
 
 def test_simulate_min_score_fires():

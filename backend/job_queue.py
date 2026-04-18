@@ -1,20 +1,25 @@
 """In-process async job queue with retry and dead-letter handling.
 
-Design: uses asyncio + ThreadPoolExecutor for CPU-bound scan work.
-No Redis dependency — suitable for single-node hackathon deployment.
-Upgrade path: swap InMemoryQueue for Arq/Celery backend via the same interface.
+v0.4: Mongo-backed (`scan_jobs` collection). Same external interface as the
+SQL version — handlers and the `enqueue / get_status / queue_depth` callers
+don't need to change.
+
+Design: asyncio + ThreadPoolExecutor for CPU-bound scan work. No Redis
+dependency — suitable for single-node hackathon deployment. Upgrade path:
+swap InMemoryQueue for Arq/Celery via the same interface.
 """
+from __future__ import annotations
 
 import asyncio
 import logging
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
-from models import ScanJob
-from database import SessionLocal
+import repositories as repos
+from mongo import C, col
+
 
 logger = logging.getLogger("promptshield.jobs")
 
@@ -36,24 +41,21 @@ class JobQueue:
         self,
         job_type: str,
         payload: Dict[str, Any],
-        org_id: Optional[int] = None,
-        created_by: Optional[int] = None,
+        org_id: Optional[str] = None,
+        created_by: Optional[str] = None,
     ) -> str:
         job_id = uuid.uuid4().hex[:12]
-        db = SessionLocal()
-        try:
-            job = ScanJob(
-                id=job_id,
-                org_id=org_id,
-                job_type=job_type,
-                input_text=payload.get("text", ""),
-                status="pending",
-                created_by=created_by,
-            )
-            db.add(job)
-            db.commit()
-        finally:
-            db.close()
+        repos.insert_scan_job(
+            {
+                "id": job_id,
+                "org_id": str(org_id) if org_id is not None else None,
+                "job_type": job_type,
+                "input_text": payload.get("text", ""),
+                "status": "pending",
+                "created_by": str(created_by) if created_by is not None else None,
+                "retry_count": 0,
+            }
+        )
 
         task = asyncio.create_task(self._run(job_id, job_type, payload))
         self._running[job_id] = task
@@ -86,102 +88,71 @@ class JobQueue:
                 )
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(min(2 ** attempt, 8))
-                    self._update_retry(job_id, attempt + 1)
+                    repos.update_scan_job(job_id, {"retry_count": attempt + 1})
 
         self._mark_failed(job_id, "Max retries exceeded")
-        self._dead_letter.append({
-            "job_id": job_id,
-            "job_type": job_type,
-            "failed_at": datetime.now(timezone.utc).isoformat(),
-        })
+        self._dead_letter.append(
+            {
+                "job_id": job_id,
+                "job_type": job_type,
+                "failed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     def _update_status(self, job_id: str, status: str):
-        db = SessionLocal()
-        try:
-            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
-            if job:
-                job.status = status
-                if status == "running":
-                    job.started_at = datetime.now(timezone.utc)
-                db.commit()
-        finally:
-            db.close()
-
-    def _update_retry(self, job_id: str, count: int):
-        db = SessionLocal()
-        try:
-            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
-            if job:
-                job.retry_count = count
-                db.commit()
-        finally:
-            db.close()
+        fields: dict = {"status": status}
+        if status == "running":
+            fields["started_at"] = datetime.now(timezone.utc)
+        repos.update_scan_job(job_id, fields)
 
     def _mark_completed(self, job_id: str, result: Any):
-        db = SessionLocal()
-        try:
-            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
-            if job:
-                job.status = "completed"
-                job.completed_at = datetime.now(timezone.utc)
-                if isinstance(result, dict) and "scan_id" in result:
-                    job.result_scan_id = result["scan_id"]
-                db.commit()
-        finally:
-            db.close()
+        fields: dict = {
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc),
+        }
+        if isinstance(result, dict) and "scan_id" in result:
+            fields["result_scan_id"] = str(result["scan_id"])
+        repos.update_scan_job(job_id, fields)
         self._running.pop(job_id, None)
 
     def _mark_failed(self, job_id: str, error: str):
-        db = SessionLocal()
-        try:
-            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
-            if job:
-                job.status = "dead_letter"
-                job.error_message = error
-                job.completed_at = datetime.now(timezone.utc)
-                db.commit()
-        finally:
-            db.close()
+        repos.update_scan_job(
+            job_id,
+            {
+                "status": "dead_letter",
+                "error_message": error,
+                "completed_at": datetime.now(timezone.utc),
+            },
+        )
         self._running.pop(job_id, None)
 
     def get_status(self, job_id: str) -> Optional[Dict]:
-        db = SessionLocal()
-        try:
-            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
-            if not job:
-                return None
-            return {
-                "id": job.id,
-                "status": job.status,
-                "job_type": job.job_type,
-                "retry_count": job.retry_count,
-                "result_scan_id": job.result_scan_id,
-                "error_message": job.error_message,
-                "created_at": job.created_at.isoformat() if job.created_at else None,
-                "started_at": job.started_at.isoformat() if job.started_at else None,
-                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-            }
-        finally:
-            db.close()
+        job = repos.get_scan_job(job_id)
+        if not job:
+            return None
+        return {
+            "id": job.get("id") or str(job.get("_id")),
+            "status": job.get("status"),
+            "job_type": job.get("job_type"),
+            "retry_count": int(job.get("retry_count") or 0),
+            "result_scan_id": job.get("result_scan_id"),
+            "error_message": job.get("error_message"),
+            "created_at": job.get("created_at").isoformat() if job.get("created_at") else None,
+            "started_at": job.get("started_at").isoformat() if job.get("started_at") else None,
+            "completed_at": job.get("completed_at").isoformat() if job.get("completed_at") else None,
+        }
 
     def list_dead_letters(self) -> list[Dict]:
         return list(self._dead_letter)
 
     def queue_depth(self) -> Dict:
-        db = SessionLocal()
-        try:
-            pending = db.query(ScanJob).filter(ScanJob.status == "pending").count()
-            running = db.query(ScanJob).filter(ScanJob.status == "running").count()
-            completed = db.query(ScanJob).filter(ScanJob.status == "completed").count()
-            failed = db.query(ScanJob).filter(ScanJob.status == "dead_letter").count()
-            return {
-                "pending": pending,
-                "running": running,
-                "completed": completed,
-                "dead_letter": failed,
-            }
-        finally:
-            db.close()
+        c = col(C.SCAN_JOBS)
+        return {
+            "pending": c.count_documents({"status": "pending"}),
+            "running": c.count_documents({"status": "running"}),
+            "completed": c.count_documents({"status": "completed"}),
+            "dead_letter": c.count_documents({"status": "dead_letter"}),
+        }
 
 
 job_queue = JobQueue()

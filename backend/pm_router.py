@@ -1,22 +1,21 @@
-"""Product-manager dashboard: aggregates over GitHub scans by author and repo.
+"""Product-manager dashboard — Mongo-backed (v0.4 port).
 
-All figures come from real rows in the `scans` table. We don't fabricate a
-time-to-fix: `remediation_deltas` is the wall-clock gap between the first
-failing scan and the first subsequent passing scan on the same (repo, pr_number).
+All figures come from real `scans` documents (source='github'). The
+remediation_delta is the wall-clock gap between the first failing scan and
+the first subsequent passing scan on the same `(repo_full_name, pr_number)`.
 If a PR never crossed back under the gate, the delta is null.
 """
+from __future__ import annotations
 
 from collections import defaultdict
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from auth import require_role
 from config import settings
-from database import Scan, get_db
+from mongo import C, col
 
 
 router = APIRouter(prefix="/api/dashboard", tags=["pm"])
@@ -31,7 +30,7 @@ class AuthorStat(BaseModel):
 
 
 class BlockedPR(BaseModel):
-    scan_id: int
+    scan_id: str
     repo_full_name: Optional[str] = None
     pr_number: Optional[int] = None
     pr_title: Optional[str] = None
@@ -66,81 +65,81 @@ class PMDashboardResponse(BaseModel):
     gate_threshold: int
 
 
-def _by_author(db: Session, threshold: int) -> List[AuthorStat]:
-    rows = (
-        db.query(Scan)
-        .filter(Scan.source == "github")
-        .filter(Scan.author_login.isnot(None))
-        .all()
-    )
-    agg: dict = defaultdict(
-        lambda: {"scan_count": 0, "risk_sum": 0.0, "gate_failures": 0, "last": None}
-    )
-    for s in rows:
-        a = agg[s.author_login]
-        a["scan_count"] += 1
-        a["risk_sum"] += float(s.risk_score or 0)
-        if (s.risk_score or 0) >= threshold:
-            a["gate_failures"] += 1
-        if a["last"] is None or s.created_at > a["last"]:
-            a["last"] = s.created_at
-    out = [
-        AuthorStat(
-            author_login=login,
-            scan_count=v["scan_count"],
-            avg_risk=round(v["risk_sum"] / max(1, v["scan_count"]), 1),
-            gate_failures=v["gate_failures"],
-            last_scan_at=v["last"].isoformat() if v["last"] else None,
-        )
-        for login, v in agg.items()
+def _by_author(threshold: int) -> List[AuthorStat]:
+    pipeline = [
+        {"$match": {"source": "github", "github.author_login": {"$ne": None}}},
+        {
+            "$group": {
+                "_id": "$github.author_login",
+                "scan_count": {"$sum": 1},
+                "avg_risk": {"$avg": "$risk_score"},
+                "gate_failures": {
+                    "$sum": {"$cond": [{"$gte": ["$risk_score", threshold]}, 1, 0]}
+                },
+                "last_scan_at": {"$max": "$created_at"},
+            }
+        },
+        {"$sort": {"gate_failures": -1, "avg_risk": -1}},
     ]
-    out.sort(key=lambda x: (-x.gate_failures, -x.avg_risk))
+    out: List[AuthorStat] = []
+    for r in col(C.SCANS).aggregate(pipeline):
+        out.append(
+            AuthorStat(
+                author_login=r["_id"],
+                scan_count=int(r["scan_count"]),
+                avg_risk=round(float(r["avg_risk"] or 0), 1),
+                gate_failures=int(r["gate_failures"]),
+                last_scan_at=r["last_scan_at"].isoformat() if r.get("last_scan_at") else None,
+            )
+        )
     return out
 
 
-def _blocked_prs(db: Session, threshold: int, limit: int) -> List[BlockedPR]:
-    rows = (
-        db.query(Scan)
-        .filter(Scan.source == "github")
-        .filter(Scan.risk_score >= threshold)
-        .order_by(Scan.created_at.desc())
+def _blocked_prs(threshold: int, limit: int) -> List[BlockedPR]:
+    cur = (
+        col(C.SCANS)
+        .find({"source": "github", "risk_score": {"$gte": threshold}})
+        .sort("created_at", -1)
         .limit(limit)
-        .all()
     )
-    return [
-        BlockedPR(
-            scan_id=s.id,
-            repo_full_name=s.repo_full_name,
-            pr_number=s.pr_number,
-            pr_title=s.pr_title,
-            pr_url=s.pr_url,
-            commit_sha=s.commit_sha,
-            risk_score=int(s.risk_score or 0),
-            author_login=s.author_login,
-            created_at=s.created_at.isoformat(),
+    out: List[BlockedPR] = []
+    for s in cur:
+        gh = s.get("github") or {}
+        out.append(
+            BlockedPR(
+                scan_id=str(s["_id"]),
+                repo_full_name=gh.get("repo_full_name"),
+                pr_number=gh.get("pr_number"),
+                pr_title=gh.get("pr_title"),
+                pr_url=gh.get("pr_url"),
+                commit_sha=gh.get("commit_sha"),
+                risk_score=int(s.get("risk_score") or 0),
+                author_login=gh.get("author_login"),
+                created_at=s["created_at"].isoformat(),
+            )
         )
-        for s in rows
-    ]
+    return out
 
 
-def _remediation_deltas(db: Session, threshold: int) -> List[RemediationDelta]:
+def _remediation_deltas(threshold: int) -> List[RemediationDelta]:
     """Per (repo, pr): time between first failing scan and first subsequent passing scan."""
-    rows = (
-        db.query(Scan)
-        .filter(Scan.source == "github")
-        .filter(Scan.repo_full_name.isnot(None))
-        .filter(Scan.pr_number.isnot(None))
-        .order_by(Scan.created_at.asc())
-        .all()
-    )
+    cur = col(C.SCANS).find(
+        {
+            "source": "github",
+            "github.repo_full_name": {"$ne": None},
+            "github.pr_number": {"$ne": None},
+        }
+    ).sort("created_at", 1)
+
     by_pr: dict = defaultdict(list)
-    for s in rows:
-        by_pr[(s.repo_full_name, s.pr_number)].append(s)
+    for s in cur:
+        gh = s.get("github") or {}
+        by_pr[(gh.get("repo_full_name"), gh.get("pr_number"))].append(s)
 
     out: List[RemediationDelta] = []
     for (repo, pr), scans in by_pr.items():
         first_fail = next(
-            (s for s in scans if (s.risk_score or 0) >= threshold), None
+            (s for s in scans if (s.get("risk_score") or 0) >= threshold), None
         )
         if not first_fail:
             continue
@@ -148,13 +147,13 @@ def _remediation_deltas(db: Session, threshold: int) -> List[RemediationDelta]:
             (
                 s
                 for s in scans
-                if s.created_at >= first_fail.created_at
-                and (s.risk_score or 0) < threshold
+                if s["created_at"] >= first_fail["created_at"]
+                and (s.get("risk_score") or 0) < threshold
             ),
             None,
         )
         delta = (
-            int((first_pass.created_at - first_fail.created_at).total_seconds())
+            int((first_pass["created_at"] - first_fail["created_at"]).total_seconds())
             if first_pass
             else None
         )
@@ -162,49 +161,42 @@ def _remediation_deltas(db: Session, threshold: int) -> List[RemediationDelta]:
             RemediationDelta(
                 repo_full_name=repo,
                 pr_number=pr,
-                first_failing_at=first_fail.created_at.isoformat(),
-                first_passing_at=first_pass.created_at.isoformat()
+                first_failing_at=first_fail["created_at"].isoformat(),
+                first_passing_at=first_pass["created_at"].isoformat()
                 if first_pass
                 else None,
                 delta_seconds=delta,
-                author_login=first_fail.author_login,
+                author_login=(first_fail.get("github") or {}).get("author_login"),
             )
         )
     out.sort(key=lambda x: x.first_failing_at, reverse=True)
     return out
 
 
-def _repo_health(db: Session, threshold: int) -> List[RepoHealth]:
-    rows = (
-        db.query(
-            Scan.repo_full_name,
-            func.count(Scan.id),
-            func.avg(Scan.risk_score),
-        )
-        .filter(Scan.source == "github")
-        .filter(Scan.repo_full_name.isnot(None))
-        .group_by(Scan.repo_full_name)
-        .all()
-    )
-    fails_by_repo: dict = defaultdict(int)
-    for s in (
-        db.query(Scan.repo_full_name)
-        .filter(Scan.source == "github")
-        .filter(Scan.risk_score >= threshold)
-        .all()
-    ):
-        if s[0]:
-            fails_by_repo[s[0]] += 1
-
-    out = [
-        RepoHealth(
-            repo_full_name=repo,
-            scan_count=int(count),
-            avg_risk=round(float(avg_risk or 0), 1),
-            gate_failures=fails_by_repo.get(repo, 0),
-        )
-        for (repo, count, avg_risk) in rows
+def _repo_health(threshold: int) -> List[RepoHealth]:
+    pipeline = [
+        {"$match": {"source": "github", "github.repo_full_name": {"$ne": None}}},
+        {
+            "$group": {
+                "_id": "$github.repo_full_name",
+                "scan_count": {"$sum": 1},
+                "avg_risk": {"$avg": "$risk_score"},
+                "gate_failures": {
+                    "$sum": {"$cond": [{"$gte": ["$risk_score", threshold]}, 1, 0]}
+                },
+            }
+        },
     ]
+    out: List[RepoHealth] = []
+    for r in col(C.SCANS).aggregate(pipeline):
+        out.append(
+            RepoHealth(
+                repo_full_name=r["_id"],
+                scan_count=int(r["scan_count"]),
+                avg_risk=round(float(r["avg_risk"] or 0), 1),
+                gate_failures=int(r["gate_failures"]),
+            )
+        )
     out.sort(key=lambda r: -(r.scan_count * r.avg_risk))
     return out
 
@@ -214,15 +206,12 @@ def _repo_health(db: Session, threshold: int) -> List[RepoHealth]:
     response_model=PMDashboardResponse,
     dependencies=[Depends(require_role("pm", "admin"))],
 )
-def pm_dashboard(
-    db: Session = Depends(get_db),
-    blocked_limit: int = Query(25, ge=1, le=100),
-):
+def pm_dashboard(blocked_limit: int = Query(25, ge=1, le=100)):
     threshold = settings.RISK_GATE_THRESHOLD
     return PMDashboardResponse(
-        by_author=_by_author(db, threshold),
-        blocked_prs=_blocked_prs(db, threshold, blocked_limit),
-        remediation_deltas=_remediation_deltas(db, threshold),
-        repo_health=_repo_health(db, threshold),
+        by_author=_by_author(threshold),
+        blocked_prs=_blocked_prs(threshold, blocked_limit),
+        remediation_deltas=_remediation_deltas(threshold),
+        repo_health=_repo_health(threshold),
         gate_threshold=threshold,
     )

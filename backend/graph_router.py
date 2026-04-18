@@ -3,26 +3,21 @@
 POST /api/graph/analyze/{scan_id} — run full dependency graph analysis
 GET  /api/graph/{scan_id}         — fetch cached graph data
 POST /api/graph/analyze-text      — analyze raw dependency file contents
-"""
 
-import json
+v0.4: Mongo-backed. Graph analysis is persisted on the scan document under
+`graph_analysis`, with mirror copies in `graph_nodes` / `graph_edges` /
+`dependencies` for ad-hoc Atlas queries and Charts.
+"""
+from __future__ import annotations
+
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from database import (
-    Dependency,
-    FindingDependency,
-    GraphEdge as GraphEdgeRow,
-    GraphNode as GraphNodeRow,
-    Maintainer,
-    Scan,
-    VulnerableRepo,
-    get_db,
-)
+import repositories as repos
+from mongo import C, col
 from risk_graph import (
     build_risk_graph,
     extract_dependencies,
@@ -40,29 +35,6 @@ class AnalyzeTextRequest(BaseModel):
     fetch_vulns: bool = True
 
 
-class DependencyNode(BaseModel):
-    id: str
-    name: str
-    type: str
-    risk_score: float
-    version: Optional[str] = None
-    vulnerabilities: Optional[list] = None
-    ecosystem: Optional[str] = None
-
-
-class GraphEdge(BaseModel):
-    source: str
-    target: str
-    type: str
-    risk: str
-
-
-class BlastRadius(BaseModel):
-    affected_count: int
-    affected_packages: List[str]
-    description: str
-
-
 class GraphResponse(BaseModel):
     nodes: List[dict]
     edges: List[dict]
@@ -72,40 +44,42 @@ class GraphResponse(BaseModel):
     narrative: str
     risk_chains: List[dict] = []
     insights: dict = {}
-    scan_id: Optional[int] = None
+    scan_id: Optional[str] = None
 
 
+# ── routes ─────────────────────────────────────────────────────────────────
 @router.post("/analyze/{scan_id}", response_model=GraphResponse)
-def analyze_scan_graph(scan_id: int, db: Session = Depends(get_db)):
-    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+def analyze_scan_graph(scan_id: str):
+    scan = repos.get_scan(scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    text = scan.input_text or ""
+    text = scan.get("input_text") or ""
     language = _detect_dep_language(text)
     deps = extract_dependencies(text, language)
-
     if not deps:
         deps = _extract_deps_from_findings(scan)
 
-    author = scan.author_login or "unknown"
+    gh = scan.get("github") or {}
+    author = gh.get("author_login") or "unknown"
+    sid = str(scan.get("_id"))
     context = {
-        "scan_id": scan.id,
-        "repo_full_name": scan.repo_full_name,
-        "pr_number": scan.pr_number,
-        "commit_sha": scan.commit_sha,
+        "scan_id": sid,
+        "repo_full_name": gh.get("repo_full_name"),
+        "pr_number": gh.get("pr_number"),
+        "commit_sha": gh.get("commit_sha"),
     }
     graph_data = build_risk_graph(
         deps,
         author,
         fetch_vulns=True,
         context=context,
-        maintainers=_load_maintainers(db),
-        vulnerable_repos=_load_vulnerable_repos(db),
+        maintainers=[],
+        vulnerable_repos=[],
     )
     narrative = generate_risk_narrative(graph_data)
 
-    _persist_graph(db, scan, graph_data, narrative, deps)
+    _persist_graph(sid, graph_data, narrative, deps)
 
     return GraphResponse(
         nodes=graph_data["nodes"],
@@ -116,20 +90,22 @@ def analyze_scan_graph(scan_id: int, db: Session = Depends(get_db)):
         narrative=narrative,
         risk_chains=graph_data.get("risk_chains", []),
         insights=graph_data.get("insights", {}),
-        scan_id=scan_id,
+        scan_id=sid,
     )
 
 
 @router.get("/{scan_id}", response_model=GraphResponse)
-def get_graph(scan_id: int, db: Session = Depends(get_db)):
-    data = _load_scan_graph(scan_id, db)
-
+def get_graph(scan_id: str):
+    data = _load_scan_graph(scan_id)
     return GraphResponse(
         nodes=data.get("nodes", []),
         edges=data.get("edges", []),
         overall_risk_score=data.get("overall_risk_score", 0),
         threat_level=data.get("threat_level", "LOW"),
-        blast_radius=data.get("blast_radius", {"affected_count": 0, "affected_packages": [], "description": ""}),
+        blast_radius=data.get(
+            "blast_radius",
+            {"affected_count": 0, "affected_packages": [], "description": ""},
+        ),
         narrative=data.get("narrative", ""),
         risk_chains=data.get("risk_chains", []),
         insights=data.get("insights", {}),
@@ -138,8 +114,8 @@ def get_graph(scan_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{scan_id}/blast-radius")
-def get_blast_radius(scan_id: int, db: Session = Depends(get_db)):
-    data = _load_scan_graph(scan_id, db)
+def get_blast_radius(scan_id: str):
+    data = _load_scan_graph(scan_id)
     return {
         "scan_id": scan_id,
         "threat_level": data.get("threat_level", "LOW"),
@@ -152,8 +128,8 @@ def get_blast_radius(scan_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{scan_id}/narrative")
-def get_narrative(scan_id: int, db: Session = Depends(get_db)):
-    data = _load_scan_graph(scan_id, db)
+def get_narrative(scan_id: str):
+    data = _load_scan_graph(scan_id)
     return {
         "scan_id": scan_id,
         "threat_level": data.get("threat_level", "LOW"),
@@ -163,8 +139,8 @@ def get_narrative(scan_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{scan_id}/paths")
-def get_risk_paths(scan_id: int, db: Session = Depends(get_db)):
-    data = _load_scan_graph(scan_id, db)
+def get_risk_paths(scan_id: str):
+    data = _load_scan_graph(scan_id)
     return {
         "scan_id": scan_id,
         "risk_chains": data.get("risk_chains", []),
@@ -179,10 +155,15 @@ def analyze_text_graph(req: AnalyzeTextRequest):
         deps,
         req.author,
         fetch_vulns=req.fetch_vulns,
-        context={"scan_id": "adhoc", "repo_full_name": "adhoc/local", "pr_number": "n/a"},
+        context={
+            "scan_id": "adhoc",
+            "repo_full_name": "adhoc/local",
+            "pr_number": "n/a",
+        },
+        maintainers=[],
+        vulnerable_repos=[],
     )
     narrative = generate_risk_narrative(graph_data)
-
     return GraphResponse(
         nodes=graph_data["nodes"],
         edges=graph_data["edges"],
@@ -195,43 +176,44 @@ def analyze_text_graph(req: AnalyzeTextRequest):
     )
 
 
+# ── helpers ────────────────────────────────────────────────────────────────
 def _detect_dep_language(text: str) -> str:
     if "require(" in text or '"dependencies"' in text or "from 'react'" in text:
         return "node"
     return "python"
 
 
-def _extract_deps_from_findings(scan: Scan) -> List[dict]:
-    """Extract dependency info from existing VULNERABLE_DEPENDENCY findings."""
-    findings = json.loads(scan.findings_json or "[]")
-    deps = []
-    seen = set()
+def _extract_deps_from_findings(scan: dict) -> List[dict]:
+    findings = list(scan.get("findings") or [])
+    deps: list[dict] = []
+    seen: set[str] = set()
     for f in findings:
         if f.get("type") != "VULNERABLE_DEPENDENCY":
             continue
-        evidence = f.get("evidence", "")
+        evidence = str(f.get("evidence", ""))
         parts = evidence.split("==")
         if len(parts) >= 2:
             name = parts[0].strip()
             version = parts[1].split("(")[0].strip()
         else:
-            name = f.get("title", "").split("@")[0].split(":")[0].strip()
+            name = str(f.get("title", "")).split("@")[0].split(":")[0].strip()
             version = "unknown"
         if name and name not in seen:
             seen.add(name)
-            deps.append({
-                "name": name.lower(),
-                "version": version,
-                "direct": True,
-                "transitive": [],
-                "ecosystem": "python",
-            })
+            deps.append(
+                {
+                    "name": name.lower(),
+                    "version": version,
+                    "direct": True,
+                    "transitive": [],
+                    "ecosystem": "python",
+                }
+            )
     return deps
 
 
 def _persist_graph(
-    db: Session,
-    scan: Scan,
+    scan_id: str,
     graph_data: dict,
     narrative: str,
     deps: list,
@@ -246,117 +228,79 @@ def _persist_graph(
         "risk_chains": graph_data.get("risk_chains", []),
         "insights": graph_data.get("insights", {}),
     }
-    scan.graph_analysis_json = json.dumps(analysis)
+    repos.update_scan(scan_id, {"graph_analysis": analysis})
 
-    db.query(GraphNodeRow).filter(GraphNodeRow.scan_id == scan.id).delete()
-    db.query(GraphEdgeRow).filter(GraphEdgeRow.scan_id == scan.id).delete()
+    col(C.GRAPH_NODES).delete_many({"scan_id": scan_id})
+    col(C.GRAPH_EDGES).delete_many({"scan_id": scan_id})
 
-    for node in graph_data["nodes"]:
-        db.add(
-            GraphNodeRow(
-                scan_id=scan.id,
-                node_id=node.get("id"),
-                node_type=node.get("type", "unknown"),
-                name=node.get("name", node.get("id", "unknown")),
-                risk_score=float(node.get("risk_score", 0)),
-                props_json=json.dumps(node),
-            )
+    if graph_data["nodes"]:
+        col(C.GRAPH_NODES).insert_many(
+            [
+                {
+                    "scan_id": scan_id,
+                    "node_id": n.get("id"),
+                    "node_type": n.get("type", "unknown"),
+                    "name": n.get("name", n.get("id", "unknown")),
+                    "risk_score": float(n.get("risk_score", 0)),
+                    "props": n,
+                }
+                for n in graph_data["nodes"]
+            ]
         )
-
-    for edge in graph_data["edges"]:
-        db.add(
-            GraphEdgeRow(
-                scan_id=scan.id,
-                source_node_id=edge.get("source"),
-                target_node_id=edge.get("target"),
-                edge_type=edge.get("type", "linked_to"),
-                risk=edge.get("risk", "low"),
-                props_json=json.dumps(edge),
-            )
+    if graph_data["edges"]:
+        col(C.GRAPH_EDGES).insert_many(
+            [
+                {
+                    "scan_id": scan_id,
+                    "source_node_id": e.get("source"),
+                    "target_node_id": e.get("target"),
+                    "edge_type": e.get("type", "linked_to"),
+                    "risk": e.get("risk", "low"),
+                    "props": e,
+                }
+                for e in graph_data["edges"]
+            ]
         )
 
     for dep_info in deps:
-        dep_nodes = [n for n in graph_data["nodes"] if n.get("name") == dep_info["name"] and n["type"] == "dependency"]
-        risk = dep_nodes[0]["risk_score"] if dep_nodes else 0
+        dep_nodes = [
+            n
+            for n in graph_data["nodes"]
+            if n.get("name") == dep_info["name"] and n.get("type") == "dependency"
+        ]
+        risk = float(dep_nodes[0]["risk_score"]) if dep_nodes else 0.0
         cve_count = len(dep_nodes[0].get("vulnerabilities", [])) if dep_nodes else 0
 
-        existing = db.query(Dependency).filter(
-            Dependency.name == dep_info["name"],
-            Dependency.version == dep_info["version"],
-        ).first()
-
-        if existing:
-            existing.risk_score = risk
-            existing.cve_count = cve_count
-            dep_id = existing.id
-        else:
-            dep_row = Dependency(
-                name=dep_info["name"],
-                version=dep_info["version"],
-                registry="pypi" if dep_info["ecosystem"] == "python" else "npm",
-                ecosystem=dep_info["ecosystem"],
-                risk_score=risk,
-                cve_count=cve_count,
-            )
-            db.add(dep_row)
-            db.flush()
-            dep_id = dep_row.id
-
-        db.add(FindingDependency(scan_id=scan.id, dependency_id=dep_id))
-
-    db.commit()
+        col(C.DEPENDENCIES).update_one(
+            {"name": dep_info["name"], "version": dep_info["version"]},
+            {
+                "$set": {
+                    "registry": "pypi" if dep_info.get("ecosystem") == "python" else "npm",
+                    "ecosystem": dep_info.get("ecosystem"),
+                    "risk_score": risk,
+                    "cve_count": cve_count,
+                },
+                "$addToSet": {"scan_ids": scan_id},
+            },
+            upsert=True,
+        )
 
 
-def _load_scan_graph(scan_id: int, db: Session) -> dict:
-    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+def _load_scan_graph(scan_id: str) -> dict:
+    scan = repos.get_scan(scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    if not scan.graph_analysis_json:
+    analysis = scan.get("graph_analysis")
+    if not analysis:
         raise HTTPException(
             status_code=404,
             detail="No graph analysis available. Run POST /api/graph/analyze/{scan_id} first.",
         )
-
-    try:
-        return json.loads(scan.graph_analysis_json)
-    except (json.JSONDecodeError, TypeError):
-        raise HTTPException(status_code=500, detail="Corrupt graph data")
-
-
-def _load_maintainers(db: Session) -> List[dict]:
-    rows = db.query(Maintainer).all()
-    out = []
-    for r in rows:
+    if isinstance(analysis, str):
         try:
-            repos = json.loads(r.repositories_json or "[]")
-        except Exception:
-            repos = []
-        out.append(
-            {
-                "name": r.name,
-                "repositories": repos,
-                "risk_level": r.risk_level,
-                "exploit_history": r.exploit_history,
-            }
-        )
-    return out
+            import json as _json
 
-
-def _load_vulnerable_repos(db: Session) -> List[dict]:
-    rows = db.query(VulnerableRepo).all()
-    out = []
-    for r in rows:
-        try:
-            cve_ids = json.loads(r.cve_ids_json or "[]")
+            return _json.loads(analysis)
         except Exception:
-            cve_ids = []
-        out.append(
-            {
-                "name": r.name,
-                "cve_ids": cve_ids,
-                "severity": r.severity,
-                "description": r.description,
-                "remediation": r.remediation,
-            }
-        )
-    return out
+            raise HTTPException(status_code=500, detail="Corrupt graph data")
+    return analysis

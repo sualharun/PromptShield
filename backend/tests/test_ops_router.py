@@ -1,23 +1,14 @@
-"""Tests for operations endpoints and command center."""
+"""Tests for operations endpoints and command center — Mongo-backed (v0.4)."""
 
-import os
-import json
+from datetime import datetime, timezone
 import pytest
-
-os.environ.setdefault("DATABASE_URL", "sqlite:///")
-
-from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)
-def _setup(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///")
-    from database import Base, engine, init_db
-    from models import Organization, OrgMember, ApiKey, PolicyVersion, ScanJob, EvalRun, BaselineFinding
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    init_db()
+def _setup():
+    from mongo import C, col
+    col(C.SCANS).delete_many({})
 
 
 def test_metrics_endpoint():
@@ -74,27 +65,31 @@ def test_command_center_empty():
 
 def test_command_center_with_scan_data():
     from main import app
-    from database import SessionLocal, Scan
-    db = SessionLocal()
-    try:
-        now = datetime.utcnow()
-        scan = Scan(
-            input_text="test",
-            risk_score=80.0,
-            findings_json=json.dumps([
+    from mongo import C, col
+
+    now = datetime.now(timezone.utc)
+    col(C.SCANS).insert_one(
+        {
+            "input_text": "test",
+            "risk_score": 80.0,
+            "findings": [
                 {"type": "SECRETS", "severity": "critical", "title": "Key"},
                 {"type": "INJECTION", "severity": "high", "title": "Prompt"},
-            ]),
-            source="github",
-            repo_full_name="org/repo",
-            pr_number=42,
-            author_login="testuser",
-            created_at=now,
-        )
-        db.add(scan)
-        db.commit()
-    finally:
-        db.close()
+            ],
+            "counts": {"static": 2, "ai": 0, "total": 2},
+            "source": "github",
+            "github": {
+                "repo_full_name": "org/repo",
+                "pr_number": 42,
+                "author_login": "testuser",
+                "pr_title": None,
+                "pr_url": None,
+                "commit_sha": None,
+            },
+            "llm_targets": [],
+            "created_at": now,
+        }
+    )
 
     client = TestClient(app)
     r = client.get("/api/ops/command-center")

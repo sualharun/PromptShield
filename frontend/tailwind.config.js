@@ -65,6 +65,9 @@ export default {
         sans: ['IBM Plex Sans', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
+      animation: {
+        'ping-slow': 'ping 1.4s cubic-bezier(0,0,0.2,1) infinite',
+      },
       borderRadius: {
         none: '0',
         DEFAULT: '0',

@@ -1,43 +1,35 @@
+"""Auth tests — Mongo-backed (v0.4)."""
 from fastapi.testclient import TestClient
 
 import main
+import repositories as repos
 from auth import (
     SESSION_COOKIE_NAME,
+    SessionUser,
     bootstrap_admin_if_needed,
     create_session_token,
     hash_password,
     verify_password,
 )
-from database import SessionLocal, User
+from mongo import C, col
 
 
 client = TestClient(main.app)
 
 
 def _reset_users():
-    db = SessionLocal()
-    try:
-        db.query(User).delete()
-        db.commit()
-    finally:
-        db.close()
+    col(C.USERS).delete_many({})
 
 
-def _seed_user(email: str, password: str, role: str = "admin", name: str = "Test") -> User:
-    db = SessionLocal()
-    try:
-        u = User(
-            email=email.lower(),
-            name=name,
-            password_hash=hash_password(password),
-            role=role,
-        )
-        db.add(u)
-        db.commit()
-        db.refresh(u)
-        return u
-    finally:
-        db.close()
+def _seed_user(email: str, password: str, role: str = "admin", name: str = "Test") -> dict:
+    return repos.insert_user(
+        {
+            "email": email.lower(),
+            "name": name,
+            "password_hash": hash_password(password),
+            "role": role,
+        }
+    )
 
 
 def test_password_hash_roundtrip():
@@ -66,14 +58,12 @@ def test_login_sets_cookie_and_me_returns_user():
     body = r.json()
     assert body["email"] == "demo@ibm.com"
     assert body["role"] == "admin"
-    # Cookie is set and scoped to the session name.
     assert SESSION_COOKIE_NAME in client.cookies
 
     me = client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.json()["email"] == "demo@ibm.com"
 
-    # Logout clears the cookie; /me returns null.
     out = client.post("/api/auth/logout")
     assert out.status_code == 200
     me2 = client.get("/api/auth/me")
@@ -117,8 +107,6 @@ def test_require_role_rejects_wrong_role():
         return {"role": user.role}
 
     c = TestClient(app)
-    c.post("/api/auth/login", json={})  # no-op; route not mounted on this app
-    # Log in through the real app to get a signed cookie, then reuse it.
     real = TestClient(main.app)
     r = real.post(
         "/api/auth/login", json={"email": "viewer@x.com", "password": "pw"}
@@ -136,24 +124,22 @@ def test_bootstrap_admin_creates_once(monkeypatch):
     monkeypatch.setattr(settings, "BOOTSTRAP_ADMIN_EMAIL", "boot@x.com")
     monkeypatch.setattr(settings, "BOOTSTRAP_ADMIN_PASSWORD", "boot-pw")
 
-    db = SessionLocal()
-    try:
-        bootstrap_admin_if_needed(db)
-        bootstrap_admin_if_needed(db)  # second call should be a no-op
-        count = db.query(User).filter(User.email == "boot@x.com").count()
-        assert count == 1
-        user = db.query(User).filter(User.email == "boot@x.com").one()
-        assert user.role == "admin"
-        assert verify_password("boot-pw", user.password_hash)
-    finally:
-        db.close()
+    bootstrap_admin_if_needed()
+    bootstrap_admin_if_needed()  # idempotent
+
+    user = repos.find_user_by_email("boot@x.com")
+    assert user is not None
+    assert user["role"] == "admin"
+    assert verify_password("boot-pw", user["password_hash"])
+    # Only one row total.
+    assert col(C.USERS).count_documents({"email": "boot@x.com"}) == 1
 
 
 def test_session_token_roundtrip():
     _reset_users()
-    u = _seed_user("roundtrip@x.com", "pw")
-    token = create_session_token(u)
-    # Directly call /me with the token via header fallback (Authorization: Bearer).
+    doc = _seed_user("roundtrip@x.com", "pw")
+    user = SessionUser.from_doc(doc)
+    token = create_session_token(user)
     c = TestClient(main.app)
     c.cookies.clear()
     r = c.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})

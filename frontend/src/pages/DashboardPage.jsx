@@ -13,6 +13,10 @@ import {
 } from 'recharts'
 import PRScanRow from '../components/PRScanRow.jsx'
 import RiskGauge from '../components/RiskGauge.jsx'
+import AtlasLiveBadge from '../components/AtlasLiveBadge.jsx'
+import HybridSearchBar from '../components/HybridSearchBar.jsx'
+import SearchHighlights from '../components/SearchHighlights.jsx'
+import SearchFacets from '../components/SearchFacets.jsx'
 import { asNetworkErrorMessage, fetchWithTimeout } from '../lib/fetchWithTimeout.js'
 
 const INSTALL_URL =
@@ -164,19 +168,33 @@ function shortDay(d) {
 
 export default function DashboardPage({ onSelectScan }) {
   const [data, setData] = useState(null)
+  const [atlasTimeline, setAtlasTimeline] = useState([])
+  const [hybrid, setHybrid] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetchWithTimeout('/api/dashboard/github')
-      .then((r) => {
-        if (!r.ok) throw new Error(`Dashboard load failed (${r.status})`)
-        return r.json()
+    Promise.all([
+      fetchWithTimeout('/api/dashboard/github'),
+      fetchWithTimeout('/api/v2/risk-timeline?source=github&days=30').catch(() => null),
+    ])
+      .then(([dashboardRes, atlasTimelineRes]) => {
+        if (cancelled) return
+        if (!dashboardRes?.ok) {
+          throw new Error(`Dashboard load failed (${dashboardRes?.status ?? 'n/a'})`)
+        }
+        return Promise.all([
+          dashboardRes.json(),
+          atlasTimelineRes?.ok ? atlasTimelineRes.json() : Promise.resolve(null),
+        ])
       })
-      .then((d) => {
-        if (!cancelled) setData(d)
+      .then((resolved) => {
+        if (!resolved || cancelled) return
+        const [dashboardData, timelineData] = resolved
+        setData(dashboardData)
+        setAtlasTimeline(timelineData?.points || [])
       })
       .catch((e) => {
         if (!cancelled) setError(asNetworkErrorMessage(e, 'Dashboard load failed'))
@@ -234,6 +252,7 @@ export default function DashboardPage({ onSelectScan }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <AtlasLiveBadge source="github" />
           {!empty && (
             <a
               href="/api/dashboard/github/export.csv"
@@ -254,6 +273,160 @@ export default function DashboardPage({ onSelectScan }) {
           </a>
         </div>
       </div>
+
+      <div className="mb-3">
+        <HybridSearchBar
+          source="github"
+          onResults={({ query, results, count, weights, error: searchError }) => {
+            if (!query) return
+            setHybrid({
+              query,
+              results: results || [],
+              count: count || 0,
+              weights: weights || null,
+              error: searchError || null,
+              facetFilter: {},
+            })
+          }}
+        />
+      </div>
+
+      <div className="mb-6">
+        <SearchFacets
+          query={hybrid?.query || null}
+          active={hybrid?.facetFilter || {}}
+          onSelect={({ key, value }) => {
+            setHybrid((h) => {
+              if (!h) return h
+              const cur = h.facetFilter || {}
+              const next =
+                cur[key] === value
+                  ? { ...cur, [key]: undefined }
+                  : { ...cur, [key]: value }
+              return { ...h, facetFilter: next }
+            })
+          }}
+        />
+      </div>
+
+      <section className="mb-6 border border-carbon-border bg-white px-4 py-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-secondary dark:text-ibm-gray-30">
+          <span className="text-[#13aa52]">Atlas features in this view:</span>
+          <span className="border border-carbon-border bg-carbon-layer px-2 py-0.5 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">Vector Search</span>
+          <span className="border border-carbon-border bg-carbon-layer px-2 py-0.5 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">Atlas Search</span>
+          <span className="border border-carbon-border bg-carbon-layer px-2 py-0.5 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">$rankFusion</span>
+          <span className="border border-carbon-border bg-carbon-layer px-2 py-0.5 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">Time-Series</span>
+          <span className="border border-carbon-border bg-carbon-layer px-2 py-0.5 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">Change Streams</span>
+        </div>
+      </section>
+
+      {hybrid && (
+        <section className="mb-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+              Hybrid search results
+            </h2>
+            <div className="flex items-center gap-2 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+              <span>
+                "{hybrid.query}" · {hybrid.count} result{hybrid.count === 1 ? '' : 's'}
+              </span>
+              {hybrid.weights && (
+                <span className="border border-carbon-border bg-carbon-layer px-1.5 py-0.5 font-mono text-[10px] dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
+                  weights v{hybrid.weights.vector?.toFixed(2)} · t{hybrid.weights.text?.toFixed(2)}
+                </span>
+              )}
+              {hybrid.facetFilter && Object.values(hybrid.facetFilter).some(Boolean) && (
+                <button
+                  type="button"
+                  onClick={() => setHybrid((h) => h && { ...h, facetFilter: {} })}
+                  className="border border-carbon-border bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ibm-blue-70 hover:bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:text-ibm-blue-30"
+                >
+                  clear filters
+                </button>
+              )}
+            </div>
+          </div>
+          {hybrid.error ? (
+            <p className="text-sm text-ibm-red-60">{hybrid.error}</p>
+          ) : hybrid.results.length === 0 ? (
+            <p className="text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">
+              No matching scans. Try broader terms like "credentials", "jailbreak", or "system prompt".
+            </p>
+          ) : (
+            (() => {
+              const ff = hybrid.facetFilter || {}
+              const filtered = hybrid.results.filter((r) => {
+                if (ff.severity) {
+                  const sevs = (r.findings || []).map((f) =>
+                    String(f.severity || '').toLowerCase(),
+                  )
+                  if (!sevs.includes(ff.severity)) return false
+                }
+                if (ff.cwe) {
+                  const cwes = (r.findings || []).map((f) => f.cwe).filter(Boolean)
+                  if (!cwes.includes(ff.cwe)) return false
+                }
+                return true
+              })
+              if (filtered.length === 0) {
+                return (
+                  <p className="text-sm text-carbon-text-tertiary dark:text-ibm-gray-40">
+                    All results filtered out. Click an active facet chip to clear it.
+                  </p>
+                )
+              }
+              return (
+                <ul className="divide-y divide-carbon-border dark:divide-ibm-gray-80">
+                  {filtered.slice(0, 10).map((r) => {
+                    const fused =
+                      typeof r.fusion_score === 'number'
+                        ? r.fusion_score
+                        : r.fusion_score?.value ?? null
+                    return (
+                      <li key={r.id} className="py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-medium text-carbon-text dark:text-ibm-gray-10">
+                            {r.repo_full_name || r.source || 'web'}
+                          </span>
+                          {r.pr_number && (
+                            <span className="font-mono text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                              #{r.pr_number}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                            · {shortDay(r.created_at)}
+                          </span>
+                          <span className="ml-auto inline-flex items-center gap-2 font-mono text-[11px]">
+                            {fused !== null && (
+                              <span
+                                title="$rankFusion combined score (vector + text via reciprocal rank)"
+                                className="border border-[#13aa52] bg-[#13aa52]/10 px-1.5 py-0.5 uppercase tracking-wider text-[#13aa52]"
+                              >
+                                ◆ fusion {Number(fused).toFixed(3)}
+                              </span>
+                            )}
+                            <span className="text-carbon-text-secondary dark:text-ibm-gray-30">
+                              risk {Math.round(r.risk_score || 0)}
+                            </span>
+                            <span className="text-carbon-text-tertiary dark:text-ibm-gray-40">
+                              · {r.total_count || 0} findings
+                            </span>
+                          </span>
+                        </div>
+                        {r.highlights && r.highlights.length > 0 && (
+                          <div className="mt-2">
+                            <SearchHighlights highlights={r.highlights} max={2} />
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )
+            })()
+          )}
+        </section>
+      )}
 
       {empty ? (
         <section className="mt-8 border border-carbon-border bg-white px-8 py-12 text-center dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
@@ -384,6 +557,66 @@ export default function DashboardPage({ onSelectScan }) {
                       strokeWidth={2}
                       fill="url(#riskFill)"
                       name="Avg risk"
+                      animationDuration={700}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          )}
+
+          {atlasTimeline?.length > 0 && (
+            <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
+              <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+                Atlas time-series risk (30 days, 7d rolling avg)
+              </h2>
+              <div className="h-56 w-full">
+                <ResponsiveContainer>
+                  <AreaChart
+                    data={atlasTimeline.map((p) => ({
+                      ...p,
+                      label: shortDay(p.ts),
+                    }))}
+                    margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
+                  >
+                    <defs>
+                      <linearGradient id="atlasRiskFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#13aa52" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#13aa52" stopOpacity={0.04} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#e0e0e0" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      stroke="#6f6f6f"
+                      tickLine={false}
+                      axisLine={{ stroke: '#c6c6c6' }}
+                      tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                    />
+                    <YAxis
+                      domain={[0, 100]}
+                      stroke="#6f6f6f"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11, fontFamily: 'IBM Plex Sans' }}
+                    />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} />
+                    <Area
+                      type="monotone"
+                      dataKey="risk_score"
+                      stroke="#13aa52"
+                      strokeWidth={1.7}
+                      fill="url(#atlasRiskFill)"
+                      name="Risk"
+                      animationDuration={700}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="rolling_7d_avg"
+                      stroke="#0f62fe"
+                      strokeWidth={2.2}
+                      fillOpacity={0}
+                      name="Rolling avg"
                       animationDuration={700}
                     />
                   </AreaChart>

@@ -3,9 +3,16 @@ import pickle
 import requests
 import re
 
-# Load ML model
-with open("ml_classifier.pkl", "rb") as f:
-    model = pickle.load(f)
+# Load ML model — prefer GridFS (Atlas-native, versioned), fall back to local file.
+try:
+    from model_registry import load_pickle
+
+    model = load_pickle("ml_classifier.pkl", fallback_path="ml_classifier.pkl")
+    print("Loaded model via GridFS (Atlas model registry)")
+except Exception as _e:
+    print(f"GridFS load failed ({_e}) — falling back to local file")
+    with open("ml_classifier.pkl", "rb") as f:
+        model = pickle.load(f)
 vectorizer = model["vectorizer"]
 clf = model["classifier"]
 
@@ -47,7 +54,7 @@ results = []
 print(f"{'Prompt':<40} {'Static':<12} {'ML':<12} {'API':<12} {'Ensemble':<12} {'Expected'}")
 print("-" * 100)
 
-for p in prompts[:20]:
+for p in prompts:
     text = p["text"]
     expected = p["expected"]
 
@@ -108,3 +115,34 @@ for r in results:
 with open("three_layer_results.json", "w") as f:
     json.dump(results, f, indent=2)
 print("\nResults saved to three_layer_results.json")
+
+# ── Persist summary to Atlas benchmark_runs (optional but useful for demo) ──
+tp = sum(1 for r in results if r["expected"] == "vulnerable" and r["ensemble"] == "vulnerable")
+tn = sum(1 for r in results if r["expected"] == "safe" and r["ensemble"] == "safe")
+fp = sum(1 for r in results if r["expected"] == "safe" and r["ensemble"] == "vulnerable")
+fn = sum(1 for r in results if r["expected"] == "vulnerable" and r["ensemble"] == "safe")
+
+accuracy = (tp + tn) / total if total else 0.0
+precision = tp / (tp + fp) if (tp + fp) else 0.0
+recall = tp / (tp + fn) if (tp + fn) else 0.0
+f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+payload = {
+    "accuracy": accuracy,
+    "precision": precision,
+    "recall": recall,
+    "f1": f1,
+    "confusion_matrix": {"tp": tp, "tn": tn, "fp": fp, "fn": fn},
+    "sample_count": total,
+    "layers_enabled": ["regex", "ml", "claude", "vector"],
+    "notes": "three_layer_benchmark.py run",
+}
+
+try:
+    r = requests.post(f"{BASE_URL}/api/v2/benchmark/runs", json=payload, timeout=15)
+    if r.ok:
+        print(f"Persisted benchmark run to Atlas (id={r.json().get('id')})")
+    else:
+        print(f"Atlas benchmark persistence skipped: HTTP {r.status_code} {r.text[:180]}")
+except Exception as e:
+    print(f"Atlas benchmark persistence skipped: {e}")

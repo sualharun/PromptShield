@@ -1,0 +1,52 @@
+{
+  "name": "scans_text_idx",
+  "collection": "scans",
+  "type": "search",
+  "definition": {
+    "synonyms": [
+      {
+        "name": "promptshield_synonyms",
+        "source": { "collection": "atlas_search_synonyms" },
+        "analyzer": "lucene.standard"
+      }
+    ],
+    "mappings": {
+      "dynamic": false,
+      "fields": {
+        "input_text": [
+          { "type": "string", "analyzer": "lucene.standard" }
+        ],
+        "source": { "type": "token" },
+        "findings": {
+          "type": "document",
+          "fields": {
+            "title": [
+              { "type": "string", "analyzer": "lucene.standard" },
+              { "type": "autocomplete", "tokenization": "edgeGram", "minGrams": 2, "maxGrams": 15 }
+            ],
+            "evidence": [
+              { "type": "string", "analyzer": "lucene.standard" }
+            ],
+            "severity": { "type": "stringFacet" },
+            "cwe": { "type": "stringFacet" },
+            "owasp": { "type": "stringFacet" },
+            "type": { "type": "token" }
+          }
+        },
+        "github": {
+          "type": "document",
+          "fields": {
+            "pr_title": [
+              { "type": "string", "analyzer": "lucene.standard" }
+            ],
+            "repo_full_name": [
+              { "type": "string", "analyzer": "lucene.standard" },
+              { "type": "token" }
+            ],
+            "author_login": { "type": "token" }
+          }
+        }
+      }
+    }
+  }
+}
