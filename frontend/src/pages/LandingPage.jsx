@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { ArrowRight, ChevronRight, Clock3, Download, ShieldCheck, Sparkles } from 'lucide-react'
 
 const TRUST_MARKS = [
@@ -52,6 +53,8 @@ const METRICS = [
     badge: 'Layered detection',
     before: 'Manual review',
     after: 'Automated baseline',
+    beforeNote: 'Reviewer-dependent checks and inconsistent coverage.',
+    afterNote: 'Detectors fan out immediately before deeper semantic analysis.',
   },
   {
     stat: '14',
@@ -59,6 +62,8 @@ const METRICS = [
     badge: 'Jailbreak engine',
     before: 'Ad hoc tests',
     after: 'Repeatable coverage',
+    beforeNote: 'One-off experiments with no persistent benchmark.',
+    afterNote: 'A fixed attack pack keeps release testing measurable.',
   },
   {
     stat: '96%',
@@ -66,6 +71,8 @@ const METRICS = [
     badge: 'Evaluation benchmark',
     before: 'Guesswork',
     after: 'Measured quality',
+    beforeNote: 'Security quality judged from intuition and spot checks.',
+    afterNote: 'Built-in benchmark makes model and rule changes trackable.',
   },
 ]
 
@@ -240,6 +247,138 @@ function HeroTrustRow({ reduced }) {
   )
 }
 
+function TerminalLogBlock({ reduced }) {
+  const steps = [
+    {
+      stage: 'Webhook',
+      status: 'received',
+      line: '[13:42:03] github webhook accepted :: PR #184 :: branch=feature/prompt-router',
+    },
+    {
+      stage: 'Diff',
+      status: 'indexing',
+      line: '[13:42:05] changed files indexed :: prompts/reviewer.ts :: agents/policy.ts',
+    },
+    {
+      stage: 'Static',
+      status: 'running',
+      line: '[13:42:06] static detectors online :: DIRECT_INJECTION :: ROLE_CONFUSION :: DATA_LEAKAGE',
+    },
+    {
+      stage: 'Semantic',
+      status: 'streaming',
+      line: '[13:42:08] claude semantic audit attached :: evidence extraction in progress',
+    },
+    {
+      stage: 'Policy',
+      status: 'gating',
+      line: '[13:42:10] .promptshield.yml loaded :: threshold=70 :: block_on=critical,high',
+    },
+    {
+      stage: 'Report',
+      status: 'publishing',
+      line: '[13:42:12] github review + csv/pdf evidence pack queued for export',
+    },
+  ]
+
+  const [visibleCount, setVisibleCount] = useState(reduced ? steps.length : 3)
+  const [cycle, setCycle] = useState(0)
+
+  useEffect(() => {
+    if (reduced) return undefined
+
+    const intervalId = window.setInterval(() => {
+      setVisibleCount((current) => {
+        const next = current >= steps.length ? 2 : current + 1
+
+        if (current >= steps.length) {
+          setCycle((value) => value + 1)
+        }
+
+        return next
+      })
+    }, 1200)
+
+    return () => window.clearInterval(intervalId)
+  }, [reduced, steps.length])
+
+  const visibleSteps = steps.slice(0, visibleCount)
+  const activeStep = visibleSteps[visibleSteps.length - 1]
+  const progress = Math.round((visibleCount / steps.length) * 100)
+
+  return (
+    <div className="terminal-panel terminal-run mt-10 w-full max-w-[980px] px-5 py-5 text-left">
+      <div className="flex flex-col gap-4 border-b border-white/8 pb-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="terminal-label text-[10px] font-semibold">live session</div>
+          <div className="mt-2 flex items-center gap-3 text-[12px] text-[#9ab5df]">
+            <span className="terminal-live-dot" />
+            <span className="terminal-mono uppercase tracking-[0.16em] text-[#d8e7ff]">scan executing</span>
+            <span className="terminal-run-divider">/</span>
+            <span className="text-[#78a9ff]">{activeStep.stage}</span>
+            <span className="text-white/42">[{activeStep.status}]</span>
+          </div>
+        </div>
+        <div className="terminal-run-meta">
+          <div>
+            <span className="terminal-run-meta-label">progress</span>
+            <span className="terminal-run-meta-value">{progress}%</span>
+          </div>
+          <div>
+            <span className="terminal-run-meta-label">cycle</span>
+            <span className="terminal-run-meta-value">0{cycle + 1}</span>
+          </div>
+          <div>
+            <span className="terminal-run-meta-label">active</span>
+            <span className="terminal-run-meta-value">{activeStep.stage}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[220px,1fr]">
+        <div className="terminal-soft px-4 py-4">
+          <div className="terminal-label text-[10px] font-semibold">run state</div>
+          <div className="mt-4 space-y-3">
+            {steps.map((step, index) => {
+              const state = index < visibleCount - 1 ? 'done' : index === visibleCount - 1 ? 'active' : 'pending'
+
+              return (
+                <div key={step.stage} className={`terminal-stage terminal-stage-${state}`}>
+                  <div className="terminal-stage-index">{String(index + 1).padStart(2, '0')}</div>
+                  <div>
+                    <div className="terminal-stage-name">{step.stage}</div>
+                    <div className="terminal-stage-status">{step.status}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="terminal-stream-panel">
+          <div className="space-y-2 text-[12px] leading-[1.6] text-[#9ab5df]">
+            {visibleSteps.map((step, index) => (
+              <div
+                key={`${step.stage}-${index}`}
+                className={`terminal-mono terminal-stream-line ${
+                  index === visibleSteps.length - 1 && !reduced ? 'terminal-stream-line-active' : ''
+                }`}
+              >
+                <span className="terminal-stream-prefix">&gt;</span>
+                <span>{step.line}</span>
+                {index === visibleSteps.length - 1 && !reduced ? <span className="terminal-cursor" /> : null}
+              </div>
+            ))}
+          </div>
+          <div className="terminal-progress mt-5">
+            <div className="terminal-progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function WorkflowVisual({ type }) {
   if (type === 'steps') {
     const rows = [
@@ -374,28 +513,51 @@ function MetricCard({ item, reduced, delay }) {
     <Reveal reduced={reduced} delay={delay} className="h-full">
       <div className="grid h-full gap-4">
         <article className="liquid-panel flex min-h-[390px] flex-col overflow-hidden px-10 py-10 text-white">
+          <div className="terminal-label text-[10px] font-semibold">{item.badge}</div>
           <div className="font-display text-[clamp(5rem,8vw,8rem)] leading-[0.88] tracking-[-0.06em]">
             {item.stat}
           </div>
-          <div className="mt-auto max-w-[15ch] text-[20px] font-medium leading-[1.28] tracking-[-0.03em] text-white/90">
+          <div className="mt-4 max-w-[15ch] text-[20px] font-medium leading-[1.28] tracking-[-0.03em] text-white/90">
             {item.label}
           </div>
+          <div className="mt-auto pt-8 text-[12px] uppercase tracking-[0.18em] text-[#78a9ff]">
+            prompt review telemetry
+          </div>
         </article>
-        <article className="border border-white/8 bg-[#0b1527] px-8 py-8 text-white">
+        <article className="metric-shift-card px-7 py-7 text-white">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 text-[18px] tracking-[-0.03em]">
-              <span className="font-medium text-white/94">Before</span>
-              <span className="text-white/34">with PromptShield</span>
-            </div>
-            <span className="glass-chip border border-white/10 bg-white/5 px-4 py-2 text-[14px] text-white/46">
+            <div className="terminal-label text-[10px] font-semibold">baseline shift</div>
+            <span className="metric-badge">
               {item.badge}
             </span>
           </div>
-          <div className="mt-12 font-display text-[clamp(3.5rem,4vw,4.75rem)] leading-[0.95] tracking-[-0.05em] text-white/96">
-            {item.before}
-          </div>
-          <div className="mt-6 font-display text-[clamp(3rem,3.8vw,4.5rem)] leading-[0.95] tracking-[-0.05em] text-white/26">
-            {item.after}
+
+          <div className="mt-6 grid gap-4">
+            <div className="metric-state-card">
+              <div className="metric-state-heading">
+                <span>Before</span>
+                <span className="metric-state-slash">/</span>
+                <span>legacy workflow</span>
+              </div>
+              <div className="metric-state-value text-white/84">{item.before}</div>
+              <div className="metric-state-note">{item.beforeNote}</div>
+            </div>
+
+            <div className="metric-shift-arrow">
+              <span className="metric-shift-line" />
+              <span className="metric-shift-marker">-&gt;</span>
+              <span className="metric-shift-line" />
+            </div>
+
+            <div className="metric-state-card metric-state-card-active">
+              <div className="metric-state-heading">
+                <span>With PromptShield</span>
+                <span className="metric-state-slash">/</span>
+                <span>current workflow</span>
+              </div>
+              <div className="metric-state-value text-white">{item.after}</div>
+              <div className="metric-state-note text-[#b8d1f7]">{item.afterNote}</div>
+            </div>
           </div>
         </article>
       </div>
@@ -442,9 +604,15 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
           <div className="landing-ibm-header flex items-center justify-between gap-4 px-4 py-3">
             <button
               onClick={() => scrollToSection('hero', reduced)}
-              className="landing-ibm-logo px-4 py-2 text-[13px] font-semibold tracking-[0.08em] text-white/90 transition-colors"
+              className="landing-ibm-logo flex flex-col items-start px-4 py-3 text-left transition-colors"
             >
-              PromptShield
+              <span className="font-pixel text-[11px] leading-none text-[#dfeaff]">PROMPTSHIELD</span>
+              <span className="font-condensed mt-2 text-[10px] uppercase tracking-[0.24em] text-[#78a9ff]">
+                pr prompt security gate
+              </span>
+              <span className="font-condensed mt-1 text-[11px] uppercase tracking-[0.12em] text-[#5f7eaf]">
+                scan early / ship safer
+              </span>
             </button>
             <div className="hidden items-center gap-2 lg:flex">
               <button
@@ -476,16 +644,22 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
 
           <div id="hero" className="flex flex-1 items-center justify-center py-20 sm:py-24 lg:py-16">
             <Reveal reduced={reduced} className="flex w-full max-w-[1040px] flex-col items-center">
-              <div className="mb-8 inline-flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-white/76">
+              <div className="terminal-label mb-8 inline-flex items-center gap-2 text-[10px] font-medium text-[#78a9ff]">
                 <Sparkles className="h-4 w-4" strokeWidth={2} />
-                <span>Institutional AI orchestration</span>
+                <span>shift-left ai security</span>
               </div>
-              <h1 className="mx-auto max-w-[12ch] text-center font-display text-[clamp(4.1rem,7.4vw,8.6rem)] leading-[0.92] tracking-[-0.065em]">
-                <span className="block text-white/52">Prompt security</span>
-                <span className="block text-white">before risky AI changes merge.</span>
+              <h1 className="terminal-mono mx-auto max-w-[18ch] text-center text-[clamp(2rem,4.7vw,4.4rem)] font-semibold uppercase leading-[1.08] tracking-[-0.03em] text-[#eef5ff]">
+                Prompt security
+                <br />
+                before risky AI
+                <br />
+                changes merge.
               </h1>
-              <p className="mx-auto mt-10 max-w-[900px] text-center text-[clamp(1.25rem,2.1vw,1.9rem)] leading-[1.35] tracking-[-0.04em] text-white/82">
-                PromptShield scans prompts and code in pull requests, runs static plus Claude-powered semantic analysis in parallel, maps findings to CWE and the OWASP LLM Top 10, and turns review into a policy gate instead of a last-minute scramble.
+              <p className="font-condensed mt-4 text-[12px] uppercase tracking-[0.28em] text-[#78a9ff]">
+                Catch prompt risk before it lands.
+              </p>
+              <p className="mx-auto mt-6 max-w-[620px] text-center text-[clamp(0.9rem,1.25vw,1.02rem)] leading-[1.45] tracking-[-0.01em] text-[#9ab5df]">
+                Scans pull-request prompts and code, runs static and Claude semantic checks in parallel, and gates merges against CWE and OWASP LLM risks.
               </p>
               <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
                 <LiquidButton onClick={onEnterDashboard}>Access dashboard</LiquidButton>
@@ -493,6 +667,7 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
                   See workflows
                 </LiquidButton>
               </div>
+              <TerminalLogBlock reduced={reduced} />
             </Reveal>
           </div>
 
@@ -500,10 +675,10 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
         </div>
       </section>
 
-      <section id="workflows" className="bg-[#07111d] px-6 py-16 sm:px-10 lg:px-12 lg:py-20">
+      <section id="workflows" className="bg-[#030507] px-6 py-16 sm:px-10 lg:px-12 lg:py-20">
         <div className="mx-auto max-w-[1800px]">
           <Reveal reduced={reduced}>
-            <h2 className="max-w-[1080px] text-[clamp(2.75rem,5vw,4.3rem)] font-medium leading-[1.02] tracking-[-0.06em] text-white">
+            <h2 className="terminal-mono max-w-[1080px] text-[clamp(1.8rem,3vw,2.8rem)] font-semibold uppercase leading-[1.18] tracking-[-0.02em] text-white">
               What PromptShield already does in this repo.
             </h2>
           </Reveal>
@@ -515,7 +690,7 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
         </div>
       </section>
 
-      <section className="bg-[#07111d] px-6 pb-6 sm:px-10 lg:px-12 lg:pb-10">
+      <section className="bg-[#030507] px-6 pb-6 sm:px-10 lg:px-12 lg:pb-10">
         <div className="mx-auto max-w-[1800px]">
           <div className="grid gap-4 xl:grid-cols-3">
             {METRICS.map((item, index) => (
@@ -525,7 +700,7 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
         </div>
       </section>
 
-      <section id="proof" className="bg-[#07111d] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
+      <section id="proof" className="bg-[#030507] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
         <div className="mx-auto max-w-[1700px] overflow-hidden text-[#e9f3ff]">
           <div className="grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-2">
             {TESTIMONIALS.map((testimonial, index) => (
@@ -656,7 +831,7 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
         </div>
       </section>
 
-      <footer className="bg-[#08111d] px-6 py-12 text-white/78 sm:px-10 lg:px-12 lg:py-14">
+      <footer className="bg-[#000000] px-6 py-12 text-white/78 sm:px-10 lg:px-12 lg:py-14">
         <div className="mx-auto grid max-w-[1700px] gap-12 lg:grid-cols-[1.15fr_repeat(4,0.8fr)]">
           <div>
             <div className="text-[22px] font-semibold tracking-[0.08em] text-white">PS</div>

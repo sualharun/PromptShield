@@ -19,11 +19,11 @@ const INSTALL_URL = import.meta.env?.VITE_GITHUB_APP_INSTALL_URL || '#'
 
 const TOOLTIP_STYLE = {
   border: '1px solid rgba(129, 159, 224, 0.16)',
-  background: 'rgba(7, 17, 31, 0.96)',
+  background: 'rgba(0, 0, 0, 0.98)',
   color: '#f5f8ff',
   fontSize: 12,
-  fontFamily: 'Sora, sans-serif',
-  borderRadius: 16,
+  fontFamily: 'IBM Plex Mono, monospace',
+  borderRadius: 4,
   padding: '8px 10px',
 }
 
@@ -65,11 +65,11 @@ function FrostSection({ children, className = '' }) {
 function DashboardHeading({ kicker, title, body }) {
   return (
     <div>
-      <p className="app-section-label text-[11px] font-semibold">{kicker}</p>
-      <h1 className="mt-3 text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-white">
+      <p className="terminal-label text-[10px] font-semibold">{kicker}</p>
+      <h1 className="terminal-mono mt-3 text-3xl font-semibold uppercase leading-[1.08] tracking-[-0.02em] text-white">
         {title}
       </h1>
-      <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-[#9bb2d6]">
+      <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#9bb2d6]">
         {body}
       </p>
     </div>
@@ -229,7 +229,7 @@ export default function DashboardPage({ onSelectScan }) {
           {!empty && (
             <a
               href="/api/dashboard/github/export.csv"
-              className="app-secondary-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium"
+              className="app-secondary-button terminal-mono inline-flex items-center gap-2 px-4 py-2 text-sm font-medium"
             >
               Export CSV
               <span className="text-xs">↓</span>
@@ -239,7 +239,7 @@ export default function DashboardPage({ onSelectScan }) {
             href={INSTALL_URL}
             target="_blank"
             rel="noreferrer"
-            className="app-primary-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium"
+            className="app-primary-button terminal-mono inline-flex items-center gap-2 px-4 py-2 text-sm font-medium"
           >
             Connect a repo
             <span className="text-base leading-none">→</span>
@@ -250,7 +250,7 @@ export default function DashboardPage({ onSelectScan }) {
       {empty ? (
         <section className="terminal-panel mt-8 px-8 py-12 text-center">
           <p className="terminal-label text-[11px] font-semibold">No PR scans yet</p>
-          <h2 className="mt-3 text-3xl font-semibold text-white">
+          <h2 className="terminal-mono mt-3 text-2xl font-semibold uppercase text-white">
             Install the GitHub App to start auto-reviewing pull requests
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm text-[#9bb2d6]">

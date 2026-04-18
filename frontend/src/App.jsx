@@ -124,15 +124,15 @@ function AppShell() {
               PS
             </span>
             <span className="flex flex-col items-start leading-tight">
-              <span className="text-[14px] font-semibold tracking-[-0.02em] text-white">
+              <span className="terminal-mono text-[14px] font-semibold tracking-[-0.02em] text-white">
                 PromptShield
               </span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-[#89a8d5]">
+              <span className="terminal-label text-[9px] font-medium text-[#89a8d5]">
                 AI Security Control Plane
               </span>
             </span>
           </button>
-          <div className="hidden min-w-[160px] items-center border-r border-carbon-border px-4 text-[12px] text-[#8aa6d2] md:flex">
+          <div className="terminal-mono hidden min-w-[160px] items-center border-r border-carbon-border px-4 text-[12px] text-[#8aa6d2] md:flex">
             Frontend command center
           </div>
           <nav className="flex items-center gap-2 px-3 text-[13px]">
@@ -140,7 +140,7 @@ function AppShell() {
               <button
                 key={item.id}
                 onClick={() => setView(item.id)}
-                className={`app-pill px-4 py-2 transition-colors ${
+                className={`app-pill terminal-mono px-4 py-2 transition-colors ${
                   view === item.id
                     ? 'border-[#88b6ff] bg-[#14305a] text-white'
                     : 'text-[#aac3e8] hover:bg-white/8 hover:text-white'
@@ -152,7 +152,7 @@ function AppShell() {
             <button
               onClick={() => report && setView('report')}
               disabled={!report}
-              className={`app-pill px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:text-carbon-text-tertiary ${
+              className={`app-pill terminal-mono px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:text-carbon-text-tertiary ${
                 view === 'report'
                   ? 'border-[#88b6ff] bg-[#14305a] text-white'
                   : 'text-[#aac3e8] hover:bg-white/8 hover:text-white'
