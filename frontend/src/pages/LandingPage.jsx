@@ -1,169 +1,170 @@
 import { motion, useReducedMotion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { ArrowRight, ChevronRight, Clock3, Download, ShieldCheck, Sparkles } from 'lucide-react'
 
 const TRUST_MARKS = [
-  'OpenAI',
-  'Anthropic',
-  'Azure OpenAI',
-  'AWS',
-  'Databricks',
-  'Snowflake',
+  'GitHub PR Reviews',
+  'OWASP LLM Top 10',
+  'CWE Mapping',
+  'Policy-as-Code',
+  'Claude Audit',
+  'Audit Trail',
 ]
 
 const WORKFLOW_CARDS = [
   {
     id: 'review',
     badge: 'Hours back, every week',
-    title: 'Prompt review, fully automated',
+    title: 'Pull-request review, fully automated',
     description:
-      'From intake to release, run policy checks, adversarial simulations, and escalation logic end-to-end.',
+      'Scan risky prompt and agent code before merge with static rules, semantic audit, and repo-level gates.',
     visual: 'steps',
   },
   {
     id: 'scoring',
-    badge: 'Triage time down 68%',
-    title: 'Scanning as a repeatable system',
+    badge: 'Risk score from 0 to 100',
+    title: 'Scoring as a repeatable system',
     description:
-      'Extract risky instructions, severity, and mitigation steps from prompts and model outputs in minutes.',
+      'Return ranked findings with severity, confidence, evidence snippets, and concrete remediation guidance.',
     visual: 'table',
   },
   {
     id: 'redteam',
-    badge: '24x faster. 57% more coverage',
-    title: 'Automated red-teaming your team can rely on',
+    badge: '14 payloads across 6 categories',
+    title: 'Automated jailbreak testing your team can trust',
     description:
-      'Probe jailbreaks, leakage, and indirect injections with structured findings that stay source-linked.',
+      'Probe indirect injection, prompt leakage, and unsafe tool behavior with structural attack simulations.',
     visual: 'clauses',
   },
   {
     id: 'release',
-    badge: '3 days to 40 minutes',
-    title: 'Release outputs traceable to source',
+    badge: 'CSV, PDF, and policy gates',
+    title: 'Governance outputs traceable to source',
     description:
-      'Generate audit-ready reports, policy deltas, and evidence packs backed by every prompt and response.',
+      'Export audit-ready reports, policy decisions, and persistent scan history for security and compliance teams.',
     visual: 'files',
   },
 ]
 
 const METRICS = [
   {
-    stat: '9.4M',
-    label: 'Prompts evaluated across production and pre-release workflows',
-    badge: 'Prompt review',
-    before: '100+ Hours',
-    after: 'under 10 Hours',
+    stat: '7',
+    label: 'Static rule categories run in parallel before the semantic audit begins',
+    badge: 'Layered detection',
+    before: 'Manual review',
+    after: 'Automated baseline',
+    beforeNote: 'Reviewer-dependent checks and inconsistent coverage.',
+    afterNote: 'Detectors fan out immediately before deeper semantic analysis.',
   },
   {
-    stat: '72%',
-    label: 'Reduction in manual approval effort for high-volume AI releases',
-    badge: 'Release ops',
-    before: '2-3 Days',
-    after: '20 Minutes',
+    stat: '14',
+    label: 'Structural jailbreak payloads used to pressure test flagged prompts',
+    badge: 'Jailbreak engine',
+    before: 'Ad hoc tests',
+    after: 'Repeatable coverage',
+    beforeNote: 'One-off experiments with no persistent benchmark.',
+    afterNote: 'A fixed attack pack keeps release testing measurable.',
   },
   {
-    stat: '4 min',
-    label: 'Average time to assemble a complete evidence pack for leadership',
-    badge: 'Audit prep',
-    before: '5 review tools',
-    after: '1 control plane',
+    stat: '96%',
+    label: 'F1 on the built-in 100-sample benchmark for vulnerable vs safe inputs',
+    badge: 'Evaluation benchmark',
+    before: 'Guesswork',
+    after: 'Measured quality',
+    beforeNote: 'Security quality judged from intuition and spot checks.',
+    afterNote: 'Built-in benchmark makes model and rule changes trackable.',
   },
 ]
 
 const TESTIMONIALS = [
   {
-    label: 'Time saved in release review',
-    metric: '95%',
+    label: 'Shift-left review',
+    metric: 'Before merge',
     quote:
-      'We wanted prompt security to move at product speed. PromptShield gave our team a way to review, red-team, and document every release without adding headcount.',
-    name: 'James Tomlinson',
-    title: 'Managing Director',
+      'PromptShield is built to catch risky prompt and agent changes during pull request review instead of waiting for runtime monitoring after deploy.',
+    name: 'README',
+    title: 'Product positioning',
   },
   {
-    label: 'Productivity increase',
-    metric: '37%',
+    label: 'Open-source posture',
+    metric: 'Self-hostable',
     quote:
-      'PromptShield automated the diligence loop around our agent launches. We now ship with clearer ownership, faster approvals, and a cleaner audit trail.',
-    name: 'Trey Heath',
-    title: 'CEO of Centerline',
+      'The repo already ships scanning, compliance reporting, PM analytics, policy validation, dependency CVE checks, and GitHub App review flows in one stack.',
+    name: 'README',
+    title: 'Current feature set',
   },
 ]
 
 const RESULTS = [
   {
-    workflow: 'System prompt launch review',
-    beforeLabel: 'Review time',
-    before: 'Expensive',
-    afterLabel: 'Review time',
-    after: '1/10th',
-    result: 'Deploy time 20x faster',
+    workflow: 'PR prompt review',
+    beforeLabel: 'Where risk is found',
+    before: 'Late in QA',
+    afterLabel: 'Where risk is found',
+    after: 'During code review',
+    result: 'Higher-confidence blocking before merge',
   },
   {
-    workflow: 'Prompt injection testing',
-    beforeLabel: 'Test entry',
+    workflow: 'Semantic + static analysis',
+    beforeLabel: 'Coverage',
+    before: 'Regex only',
+    afterLabel: 'Coverage',
+    after: 'Layered analysis',
+    result: 'Findings sorted by severity and confidence',
+  },
+  {
+    workflow: '.promptshield.yml policy',
+    beforeLabel: 'Repo gate',
+    before: 'One-size-fits-all',
+    afterLabel: 'Repo gate',
+    after: 'Configurable',
+    result: 'Thresholds, overrides, and ignore rules per repo',
+  },
+  {
+    workflow: 'History and audit trail',
+    beforeLabel: 'Evidence',
+    before: 'Transient',
+    afterLabel: 'Evidence',
+    after: 'Persistent',
+    result: 'Last 10 scans and immutable-style activity log',
+  },
+  {
+    workflow: 'Compliance exports',
+    beforeLabel: 'Governance handoff',
     before: 'Manual',
-    afterLabel: 'Test entry',
-    after: 'Automated',
-    result: 'Productivity gain 37% in first month',
+    afterLabel: 'Governance handoff',
+    after: 'Exportable',
+    result: 'CSV and PDF reports for audit workflows',
   },
   {
-    workflow: 'Policy exception handling',
-    beforeLabel: 'Per request',
-    before: '45-60 min',
-    afterLabel: 'Per request',
-    after: '<15 min',
-    result: 'Cost per contact $1,000 to $100',
-  },
-  {
-    workflow: 'Prospect research & qualification',
-    beforeLabel: 'Per release',
-    before: 'Manual',
-    afterLabel: 'Per release',
-    after: 'Automated',
-    result: '95% less manual work',
-  },
-  {
-    workflow: 'Evidence pack assembly',
-    beforeLabel: 'Per approval',
-    before: '~60 min',
-    afterLabel: 'Per approval',
-    after: '~6 min',
-    result: '90% faster review time',
-  },
-  {
-    workflow: 'Incident response package',
-    beforeLabel: 'Daily throughput',
-    before: '~45 cases',
-    afterLabel: 'Daily throughput',
-    after: '+60 cases',
-    result: '33% capacity increase',
+    workflow: 'Cross-repo analytics',
+    beforeLabel: 'Pattern detection',
+    before: 'Siloed',
+    afterLabel: 'Pattern detection',
+    after: 'Shared trends',
+    result: 'Recurring vuln types across repositories',
   },
 ]
 
 const OUTCOMES = [
   {
-    title: 'Credit platform cuts prompt triage from hours to minutes',
-    stat: '200+',
-    detail: 'high-risk prompts processed per year',
+    title: 'GitHub App posts inline review comments only on added diff lines',
+    stat: 'PR',
+    detail: 'review bot flow baked into the backend and dashboard',
   },
   {
-    title: 'Long/short AI team accelerates launch decisions with richer evidence',
-    stat: '3x',
-    detail: 'more source context in each investment decision',
+    title: 'Compliance dashboard maps findings directly to CWE and OWASP LLM categories',
+    stat: 'CWE',
+    detail: 'governance view already wired into the frontend',
   },
   {
-    title: 'Global enterprise rolls out copilots without adding governance headcount',
-    stat: '137%',
-    detail: 'increase in releases screened annually',
+    title: 'PM analytics track blocked PRs, author leaderboards, and remediation deltas',
+    stat: 'PM',
+    detail: 'role-gated analytics for engineering leadership',
   },
 ]
 
-const SECURITY_BADGES = [
-  'SOC 2',
-  'GDPR',
-  'Audit Logs',
-  'RBAC',
-  'Zero Training',
-]
+const SECURITY_BADGES = ['SOC 2', 'GDPR', 'Audit Logs', 'RBAC', 'Zero Training']
 
 const FOOTER_COLUMNS = [
   {
@@ -175,16 +176,12 @@ const FOOTER_COLUMNS = [
     links: ['Review prompts', 'Red-team releases', 'Search incidents', 'Create evidence', 'Resolve findings', 'Run experiments'],
   },
   {
-    heading: 'Industries',
-    links: ['Finance', 'Healthcare', 'Insurance', 'SaaS', 'Public sector'],
-  },
-  {
     heading: 'Resources',
     links: ['Insights', 'News', 'Events', 'Customer stories', 'Documentation', 'Pricing'],
   },
   {
-    heading: 'Company',
-    links: ['About', 'Careers', 'Contact', 'Security', 'Trust Center'],
+    heading: 'Security',
+    links: ['Trust Center', 'Policy validation', 'Compliance exports', 'Audit trail', 'Role-based auth'],
   },
 ]
 
@@ -198,14 +195,10 @@ function Reveal({ children, className = '', delay = 0, reduced }) {
   return (
     <motion.div
       className={className}
-      initial={reduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 28 }}
+      initial={reduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.18 }}
-      transition={
-        reduced
-          ? { duration: 0 }
-          : { duration: 0.7, delay, ease: [0.22, 1, 0.36, 1] }
-      }
+      transition={reduced ? { duration: 0 } : { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
     </motion.div>
@@ -213,15 +206,12 @@ function Reveal({ children, className = '', delay = 0, reduced }) {
 }
 
 function LiquidButton({ children, onClick, tone = 'light', icon = false }) {
-  const toneClass =
-    tone === 'dark'
-      ? 'border-white/15 bg-black/20 text-white hover:bg-black/28'
-      : 'border-white/70 bg-white/88 text-[#272523] hover:bg-white'
+  const toneClass = tone === 'dark' ? 'landing-ibm-secondary' : 'landing-ibm-button'
 
   return (
     <button
       onClick={onClick}
-      className={`liquid-button inline-flex items-center gap-2 border px-5 py-3 text-sm font-semibold tracking-[-0.02em] shadow-[0_18px_60px_rgba(17,12,8,0.12)] transition-all duration-300 hover:-translate-y-0.5 ${toneClass}`}
+      className={`liquid-button inline-flex items-center gap-2 border px-5 py-3 text-sm font-semibold tracking-[-0.02em] transition-colors duration-200 ${toneClass}`}
     >
       <span>{children}</span>
       {icon && <ArrowRight className="h-4 w-4" strokeWidth={2.2} />}
@@ -232,7 +222,7 @@ function LiquidButton({ children, onClick, tone = 'light', icon = false }) {
 function GlassChip({ children, className = '' }) {
   return (
     <div
-      className={`glass-chip inline-flex items-center gap-2 border border-white/10 bg-white/6 px-4 py-2 text-[13px] font-medium text-white/62 shadow-[0_12px_30px_rgba(0,0,0,0.18)] backdrop-blur-xl ${className}`}
+      className={`glass-chip inline-flex items-center gap-2 border border-white/10 bg-white/6 px-4 py-2 text-[13px] font-medium text-white/62 ${className}`}
     >
       <Clock3 className="h-3.5 w-3.5" />
       <span>{children}</span>
@@ -247,7 +237,7 @@ function HeroTrustRow({ reduced }) {
         {TRUST_MARKS.map((mark) => (
           <div
             key={mark}
-            className="text-center text-[22px] font-semibold tracking-[0.06em] text-white/90 sm:text-left"
+            className="text-center text-[18px] font-semibold tracking-[0.04em] text-white/90 sm:text-left"
           >
             {mark}
           </div>
@@ -257,14 +247,146 @@ function HeroTrustRow({ reduced }) {
   )
 }
 
+function TerminalLogBlock({ reduced }) {
+  const steps = [
+    {
+      stage: 'Webhook',
+      status: 'received',
+      line: '[13:42:03] github webhook accepted :: PR #184 :: branch=feature/prompt-router',
+    },
+    {
+      stage: 'Diff',
+      status: 'indexing',
+      line: '[13:42:05] changed files indexed :: prompts/reviewer.ts :: agents/policy.ts',
+    },
+    {
+      stage: 'Static',
+      status: 'running',
+      line: '[13:42:06] static detectors online :: DIRECT_INJECTION :: ROLE_CONFUSION :: DATA_LEAKAGE',
+    },
+    {
+      stage: 'Semantic',
+      status: 'streaming',
+      line: '[13:42:08] claude semantic audit attached :: evidence extraction in progress',
+    },
+    {
+      stage: 'Policy',
+      status: 'gating',
+      line: '[13:42:10] .promptshield.yml loaded :: threshold=70 :: block_on=critical,high',
+    },
+    {
+      stage: 'Report',
+      status: 'publishing',
+      line: '[13:42:12] github review + csv/pdf evidence pack queued for export',
+    },
+  ]
+
+  const [visibleCount, setVisibleCount] = useState(reduced ? steps.length : 3)
+  const [cycle, setCycle] = useState(0)
+
+  useEffect(() => {
+    if (reduced) return undefined
+
+    const intervalId = window.setInterval(() => {
+      setVisibleCount((current) => {
+        const next = current >= steps.length ? 2 : current + 1
+
+        if (current >= steps.length) {
+          setCycle((value) => value + 1)
+        }
+
+        return next
+      })
+    }, 1200)
+
+    return () => window.clearInterval(intervalId)
+  }, [reduced, steps.length])
+
+  const visibleSteps = steps.slice(0, visibleCount)
+  const activeStep = visibleSteps[visibleSteps.length - 1]
+  const progress = Math.round((visibleCount / steps.length) * 100)
+
+  return (
+    <div className="terminal-panel terminal-run mt-10 w-full max-w-[980px] px-5 py-5 text-left">
+      <div className="flex flex-col gap-4 border-b border-white/8 pb-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="terminal-label text-[10px] font-semibold">live session</div>
+          <div className="mt-2 flex items-center gap-3 text-[12px] text-[#9ab5df]">
+            <span className="terminal-live-dot" />
+            <span className="terminal-mono uppercase tracking-[0.16em] text-[#d8e7ff]">scan executing</span>
+            <span className="terminal-run-divider">/</span>
+            <span className="text-[#78a9ff]">{activeStep.stage}</span>
+            <span className="text-white/42">[{activeStep.status}]</span>
+          </div>
+        </div>
+        <div className="terminal-run-meta">
+          <div>
+            <span className="terminal-run-meta-label">progress</span>
+            <span className="terminal-run-meta-value">{progress}%</span>
+          </div>
+          <div>
+            <span className="terminal-run-meta-label">cycle</span>
+            <span className="terminal-run-meta-value">0{cycle + 1}</span>
+          </div>
+          <div>
+            <span className="terminal-run-meta-label">active</span>
+            <span className="terminal-run-meta-value">{activeStep.stage}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[220px,1fr]">
+        <div className="terminal-soft px-4 py-4">
+          <div className="terminal-label text-[10px] font-semibold">run state</div>
+          <div className="mt-4 space-y-3">
+            {steps.map((step, index) => {
+              const state = index < visibleCount - 1 ? 'done' : index === visibleCount - 1 ? 'active' : 'pending'
+
+              return (
+                <div key={step.stage} className={`terminal-stage terminal-stage-${state}`}>
+                  <div className="terminal-stage-index">{String(index + 1).padStart(2, '0')}</div>
+                  <div>
+                    <div className="terminal-stage-name">{step.stage}</div>
+                    <div className="terminal-stage-status">{step.status}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="terminal-stream-panel">
+          <div className="space-y-2 text-[12px] leading-[1.6] text-[#9ab5df]">
+            {visibleSteps.map((step, index) => (
+              <div
+                key={`${step.stage}-${index}`}
+                className={`terminal-mono terminal-stream-line ${
+                  index === visibleSteps.length - 1 && !reduced ? 'terminal-stream-line-active' : ''
+                }`}
+              >
+                <span className="terminal-stream-prefix">&gt;</span>
+                <span>{step.line}</span>
+                {index === visibleSteps.length - 1 && !reduced ? <span className="terminal-cursor" /> : null}
+              </div>
+            ))}
+          </div>
+          <div className="terminal-progress mt-5">
+            <div className="terminal-progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function WorkflowVisual({ type }) {
   if (type === 'steps') {
     const rows = [
       ['Collecting prompts', 'GitHub / Postman / App logs'],
-      ['Pulling context', 'Docs / tickets / policies'],
-      ['Analyzing with agent', 'Security + compliance'],
-      ['Building findings', 'Severity, fixes, approvals'],
-      ['Syncing deliverables', 'Jira / Slack / evidence pack'],
+      ['Pulling context', 'Repo diff / policy / metadata'],
+      ['Analyzing with agent', 'Static + Claude semantic audit'],
+      ['Building findings', 'CWE / OWASP / evidence'],
+      ['Syncing deliverables', 'Checks / reports / audit trail'],
     ]
 
     return (
@@ -284,22 +406,22 @@ function WorkflowVisual({ type }) {
 
   if (type === 'table') {
     const rows = [
-      ['1', '$374,372', 'Conflict', 'orange'],
-      ['2', '$2,374,372', 'filename.pdf', 'gray'],
-      ['3', '$374,372', 'Conflict', 'orange'],
-      ['4', '$2,374,372', 'filename.pdf', 'gray'],
+      ['1', 'DIRECT_INJECTION', 'Critical', 'orange'],
+      ['2', 'SECRET_IN_PROMPT', 'High', 'gray'],
+      ['3', 'ROLE_CONFUSION', 'Medium', 'orange'],
+      ['4', 'DATA_LEAKAGE', 'High', 'gray'],
     ]
 
     return (
       <div className="grid h-full place-items-center px-8 py-10">
         <div className="w-full max-w-[520px] overflow-hidden border border-white/6 text-white/52">
           {rows.map(([index, value, tag, tone]) => (
-            <div key={`${index}-${value}`} className="grid grid-cols-[80px,1fr,220px] border-b border-white/6 last:border-b-0">
+            <div key={`${index}-${value}`} className="grid grid-cols-[80px,1fr,160px] border-b border-white/6 last:border-b-0">
               <div className="border-r border-white/6 px-6 py-4 text-[22px]">{index}</div>
-              <div className="border-r border-white/6 px-6 py-4 text-[22px]">{value}</div>
+              <div className="border-r border-white/6 px-6 py-4 font-mono text-[18px]">{value}</div>
               <div className="px-6 py-3">
                 <span
-                  className={`glass-chip inline-flex border px-3 py-1.5 text-[14px] font-medium ${
+                  className={`inline-flex border px-3 py-1.5 text-[14px] font-medium ${
                     tone === 'orange'
                       ? 'border-[#ff7f50]/40 bg-[#ff7f50] text-white'
                       : 'border-white/6 bg-white/16 text-white/76'
@@ -318,10 +440,6 @@ function WorkflowVisual({ type }) {
   if (type === 'clauses') {
     return (
       <div className="relative h-full overflow-hidden px-10 py-10">
-        <div className="absolute inset-x-12 top-10 h-20 rounded-full bg-white/5 blur-3xl" />
-        <div className="absolute left-24 top-24 h-24 w-24 rounded-full bg-white/8 blur-2xl" />
-        <div className="absolute right-20 top-20 h-24 w-28 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute inset-x-20 bottom-16 h-28 rounded-full bg-white/7 blur-3xl" />
         <div className="relative flex h-full flex-col justify-center gap-8">
           {[
             ['01', 'Indirect prompt injection'],
@@ -332,10 +450,10 @@ function WorkflowVisual({ type }) {
               key={index}
               className={`flex items-center gap-3 ${rowIndex === 1 ? 'ml-12' : rowIndex === 2 ? 'ml-24' : ''}`}
             >
-              <span className="rounded-[6px] bg-white px-2 py-1 text-[14px] font-semibold text-[#2b2825]">
+              <span className="rounded-[4px] bg-white px-2 py-1 text-[14px] font-semibold text-[#2b2825]">
                 {index}
               </span>
-              <span className="rounded-[6px] border border-white/70 px-4 py-2 text-[18px] font-medium text-white/90">
+              <span className="rounded-[4px] border border-white/70 px-4 py-2 text-[18px] font-medium text-white/90">
                 {label}
               </span>
             </div>
@@ -347,19 +465,18 @@ function WorkflowVisual({ type }) {
 
   return (
     <div className="relative flex h-full items-center justify-center overflow-hidden px-10 py-10">
-      <div className="absolute inset-12 rounded-full bg-white/12 blur-[90px]" />
       <div className="relative flex w-full max-w-[420px] flex-col gap-8 text-white/92">
         {[
           { label: 'PromptShield Evidence Pack.pdf', tone: 'bg-[#ff7642]' },
-          { label: 'Release Findings.xlsx', tone: 'bg-[#43b26d]' },
-          { label: 'Policy Delta Memo.pdf', tone: 'bg-[#ff6c6c]' },
+          { label: 'OWASP LLM Compliance.csv', tone: 'bg-[#43b26d]' },
+          { label: '.promptshield.yml Policy.pdf', tone: 'bg-[#5f95ff]' },
         ].map((file) => (
           <div
             key={file.label}
-            className="glass-file flex items-center justify-between gap-4 border border-white/75 bg-white/10 px-5 py-3 text-[18px] shadow-[0_12px_30px_rgba(0,0,0,0.18)] backdrop-blur-xl"
+            className="glass-file flex items-center justify-between gap-4 border border-white/75 bg-white/10 px-5 py-3 text-[18px]"
           >
             <div className="flex min-w-0 items-center gap-4">
-              <span className={`h-3 w-3 rounded-full ${file.tone}`} />
+              <span className={`h-3 w-3 ${file.tone}`} />
               <span className="truncate">{file.label}</span>
             </div>
             <Download className="h-4 w-4 shrink-0" />
@@ -373,7 +490,7 @@ function WorkflowVisual({ type }) {
 function WorkflowCard({ card, reduced, delay }) {
   return (
     <Reveal reduced={reduced} delay={delay} className="h-full">
-      <article className="workflow-card flex h-full flex-col border border-white/8 bg-[#343331] text-white">
+      <article className="workflow-card flex h-full flex-col border border-white/8 bg-[#0d1c31] text-white">
         <div className="workflow-visual min-h-[360px] border-b border-white/8">
           <WorkflowVisual type={card.visual} />
         </div>
@@ -396,28 +513,51 @@ function MetricCard({ item, reduced, delay }) {
     <Reveal reduced={reduced} delay={delay} className="h-full">
       <div className="grid h-full gap-4">
         <article className="liquid-panel flex min-h-[390px] flex-col overflow-hidden px-10 py-10 text-white">
+          <div className="terminal-label text-[10px] font-semibold">{item.badge}</div>
           <div className="font-display text-[clamp(5rem,8vw,8rem)] leading-[0.88] tracking-[-0.06em]">
             {item.stat}
           </div>
-          <div className="mt-auto max-w-[15ch] text-[20px] font-medium leading-[1.28] tracking-[-0.03em] text-white/90">
+          <div className="mt-4 max-w-[15ch] text-[20px] font-medium leading-[1.28] tracking-[-0.03em] text-white/90">
             {item.label}
           </div>
+          <div className="mt-auto pt-8 text-[12px] uppercase tracking-[0.18em] text-[#78a9ff]">
+            prompt review telemetry
+          </div>
         </article>
-        <article className="border border-white/8 bg-[#333230] px-8 py-8 text-white">
+        <article className="metric-shift-card px-7 py-7 text-white">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 text-[18px] tracking-[-0.03em]">
-              <span className="font-medium text-white/94">Before</span>
-              <span className="text-white/34">with PromptShield</span>
-            </div>
-            <span className="glass-chip border border-white/10 bg-white/5 px-4 py-2 text-[14px] text-white/46">
+            <div className="terminal-label text-[10px] font-semibold">baseline shift</div>
+            <span className="metric-badge">
               {item.badge}
             </span>
           </div>
-          <div className="mt-12 font-display text-[clamp(3.5rem,4vw,4.75rem)] leading-[0.95] tracking-[-0.05em] text-white/96">
-            {item.before}
-          </div>
-          <div className="mt-6 font-display text-[clamp(3rem,3.8vw,4.5rem)] leading-[0.95] tracking-[-0.05em] text-white/26">
-            {item.after}
+
+          <div className="mt-6 grid gap-4">
+            <div className="metric-state-card">
+              <div className="metric-state-heading">
+                <span>Before</span>
+                <span className="metric-state-slash">/</span>
+                <span>legacy workflow</span>
+              </div>
+              <div className="metric-state-value text-white/84">{item.before}</div>
+              <div className="metric-state-note">{item.beforeNote}</div>
+            </div>
+
+            <div className="metric-shift-arrow">
+              <span className="metric-shift-line" />
+              <span className="metric-shift-marker">-&gt;</span>
+              <span className="metric-shift-line" />
+            </div>
+
+            <div className="metric-state-card metric-state-card-active">
+              <div className="metric-state-heading">
+                <span>With PromptShield</span>
+                <span className="metric-state-slash">/</span>
+                <span>current workflow</span>
+              </div>
+              <div className="metric-state-value text-white">{item.after}</div>
+              <div className="metric-state-note text-[#b8d1f7]">{item.afterNote}</div>
+            </div>
           </div>
         </article>
       </div>
@@ -428,16 +568,16 @@ function MetricCard({ item, reduced, delay }) {
 function TestimonialCard({ testimonial, reduced, delay }) {
   return (
     <Reveal reduced={reduced} delay={delay} className="h-full">
-      <article className="h-full border border-black/6 bg-[#fcfbf8] px-8 py-7 text-[#27231f]">
-        <div className="text-[11px] uppercase tracking-[0.12em] text-[#8f877f]">{testimonial.label}</div>
+      <article className="app-panel h-full px-8 py-7 text-[#eff6ff]">
+        <div className="text-[11px] uppercase tracking-[0.12em] text-[#8fb2e5]">{testimonial.label}</div>
         <div className="mt-1 text-[22px] font-semibold tracking-[-0.03em]">{testimonial.metric}</div>
-        <p className="mt-6 max-w-[46ch] text-[21px] leading-[1.48] tracking-[-0.03em] text-[#3b352f]">
-          <span className="mr-1 text-[#ff7f4c]">"</span>
+        <p className="mt-6 max-w-[46ch] text-[21px] leading-[1.48] tracking-[-0.03em] text-[#c7d8f2]">
+          <span className="mr-1 text-[#7db2ff]">"</span>
           {testimonial.quote}
-          <span className="ml-1 text-[#ff7f4c]">"</span>
+          <span className="ml-1 text-[#7db2ff]">"</span>
         </p>
-        <div className="mt-9 flex items-center gap-3 text-[13px] text-[#6b645d]">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-[#efe8df] text-[11px] font-semibold text-[#302a25]">
+        <div className="mt-9 flex items-center gap-3 text-[13px] text-[#90acd6]">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-[#12243d] text-[11px] font-semibold text-[#f3f7ff]">
             {testimonial.name
               .split(' ')
               .map((part) => part[0])
@@ -445,7 +585,7 @@ function TestimonialCard({ testimonial, reduced, delay }) {
               .join('')}
           </span>
           <div>
-            <div className="font-semibold text-[#2c2621]">{testimonial.name}</div>
+            <div className="font-semibold text-[#f3f7ff]">{testimonial.name}</div>
             <div>{testimonial.title}</div>
           </div>
         </div>
@@ -458,68 +598,31 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
   const reduced = useReducedMotion()
 
   return (
-    <div className="landing-shell font-body bg-[#2f2d2b] text-white">
+    <div className="landing-shell font-body text-white">
       <section className="liquid-surface border-b border-white/10">
-        <div className="mx-auto flex min-h-screen max-w-[1700px] flex-col px-6 pb-10 pt-6 sm:px-10 lg:px-12">
-          <div className="flex items-center justify-between gap-4">
-            <button
-              onClick={() => scrollToSection('hero', reduced)}
-              className="nav-pill border border-white/18 bg-white/10 px-4 py-2 text-[13px] font-semibold tracking-[0.08em] text-white/90 shadow-[0_14px_32px_rgba(0,0,0,0.12)] backdrop-blur-xl"
-            >
-              PromptShield
-            </button>
-            <div className="hidden items-center gap-2 lg:flex">
-              <button
-                onClick={() => scrollToSection('workflows', reduced)}
-                className="nav-pill border border-white/12 bg-black/10 px-4 py-2 text-[13px] text-white/75 backdrop-blur-xl transition-colors hover:bg-black/18 hover:text-white"
-              >
-                Platform
-              </button>
-              <button
-                onClick={() => scrollToSection('proof', reduced)}
-                className="nav-pill border border-white/12 bg-black/10 px-4 py-2 text-[13px] text-white/75 backdrop-blur-xl transition-colors hover:bg-black/18 hover:text-white"
-              >
-                Outcomes
-              </button>
-              <button
-                onClick={() => scrollToSection('security', reduced)}
-                className="nav-pill border border-white/12 bg-black/10 px-4 py-2 text-[13px] text-white/75 backdrop-blur-xl transition-colors hover:bg-black/18 hover:text-white"
-              >
-                Security
-              </button>
-              <LiquidButton onClick={onEnterScan} tone="dark">
-                Run a live scan
-              </LiquidButton>
-              <LiquidButton onClick={onEnterDashboard} icon>
-                Book a demo
-              </LiquidButton>
-            </div>
-          </div>
-
-          <div
-            id="hero"
-            className="flex flex-1 items-center py-20 sm:py-24 lg:justify-end lg:py-16"
-          >
-            <Reveal reduced={reduced} className="w-full max-w-[980px] lg:mr-[3vw]">
-              <div className="mb-8 inline-flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-white/76">
-                <Sparkles className="h-4 w-4" strokeWidth={2} />
-                <span>Institutional AI orchestration</span>
-              </div>
-              <h1 className="font-display text-[clamp(4.4rem,8.2vw,9.4rem)] leading-[0.9] tracking-[-0.065em]">
-                <span className="block text-white/52">The operating layer for</span>
-                <span className="block text-white">Secure Enterprise AI.</span>
+        <div className="mx-auto flex min-h-screen max-w-[1700px] flex-col px-6 pb-10 pt-10 sm:px-10 sm:pt-12 lg:px-12 lg:pt-14">
+          <div id="hero" className="flex flex-1 items-center justify-center py-20 sm:py-24 lg:py-16">
+            <Reveal reduced={reduced} className="flex w-full max-w-[1040px] flex-col items-center">
+              <h1 className="terminal-mono mx-auto max-w-[18ch] text-center text-[clamp(2rem,4.7vw,4.4rem)] font-semibold uppercase leading-[1.08] tracking-[-0.03em] text-[#eef5ff]">
+                Prompt security
+                <br />
+                before risky AI
+                <br />
+                changes merge.
               </h1>
-              <p className="mt-12 max-w-[760px] text-[clamp(1.35rem,2.4vw,2.15rem)] leading-[1.2] tracking-[-0.04em] text-white/90 lg:ml-[10.5rem]">
-                <span className="text-white/56">The platform to</span> orchestrate prompt
-                review, policy controls, and release approvals into production AI
-                workflows.
+              <p className="font-condensed mt-4 text-[12px] uppercase tracking-[0.28em] text-[#78a9ff]">
+                Catch prompt risk before it lands.
               </p>
-              <div className="mt-12 flex flex-wrap items-center gap-4 lg:ml-[20rem]">
-                <LiquidButton onClick={onEnterDashboard}>Book a demo</LiquidButton>
+              <p className="mx-auto mt-6 max-w-[620px] text-center text-[clamp(0.9rem,1.25vw,1.02rem)] leading-[1.45] tracking-[-0.01em] text-[#9ab5df]">
+                Scans pull-request prompts and code, runs static and Claude semantic checks in parallel, and gates merges against CWE and OWASP LLM risks.
+              </p>
+              <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
+                <LiquidButton onClick={onEnterDashboard}>Access dashboard</LiquidButton>
                 <LiquidButton onClick={() => scrollToSection('workflows', reduced)} tone="dark" icon>
                   See workflows
                 </LiquidButton>
               </div>
+              <TerminalLogBlock reduced={reduced} />
             </Reveal>
           </div>
 
@@ -527,44 +630,34 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
         </div>
       </section>
 
-      <section id="workflows" className="bg-[#2f2d2b] px-6 py-16 sm:px-10 lg:px-12 lg:py-20">
+      <section id="workflows" className="bg-[#030507] px-6 py-16 sm:px-10 lg:px-12 lg:py-20">
         <div className="mx-auto max-w-[1800px]">
           <Reveal reduced={reduced}>
-            <h2 className="max-w-[980px] text-[clamp(2.75rem,5vw,4.3rem)] font-medium leading-[1.02] tracking-[-0.06em] text-white">
-              The workflows teams operationalize first.
+            <h2 className="terminal-mono max-w-[1080px] text-[clamp(1.8rem,3vw,2.8rem)] font-semibold uppercase leading-[1.18] tracking-[-0.02em] text-white">
+              What PromptShield already does in this repo.
             </h2>
           </Reveal>
           <div className="mt-12 grid gap-4 xl:grid-cols-4">
             {WORKFLOW_CARDS.map((card, index) => (
-              <WorkflowCard
-                key={card.id}
-                card={card}
-                reduced={reduced}
-                delay={index * 0.08}
-              />
+              <WorkflowCard key={card.id} card={card} reduced={reduced} delay={index * 0.08} />
             ))}
           </div>
         </div>
       </section>
 
-      <section className="bg-[#2f2d2b] px-6 pb-6 sm:px-10 lg:px-12 lg:pb-10">
+      <section className="bg-[#030507] px-6 pb-6 sm:px-10 lg:px-12 lg:pb-10">
         <div className="mx-auto max-w-[1800px]">
           <div className="grid gap-4 xl:grid-cols-3">
             {METRICS.map((item, index) => (
-              <MetricCard
-                key={item.stat}
-                item={item}
-                reduced={reduced}
-                delay={index * 0.08}
-              />
+              <MetricCard key={item.stat} item={item} reduced={reduced} delay={index * 0.08} />
             ))}
           </div>
         </div>
       </section>
 
-      <section id="proof" className="bg-[#efece6] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
-        <div className="mx-auto max-w-[1700px] overflow-hidden border border-black/6 bg-[#f8f5f0] text-[#231f1b] shadow-[0_26px_90px_rgba(39,28,16,0.08)]">
-          <div className="grid border-b border-black/6 lg:grid-cols-2">
+      <section id="proof" className="bg-[#030507] px-4 py-8 sm:px-8 lg:px-12 lg:py-10">
+        <div className="mx-auto max-w-[1700px] overflow-hidden text-[#e9f3ff]">
+          <div className="grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-2">
             {TESTIMONIALS.map((testimonial, index) => (
               <TestimonialCard
                 key={testimonial.name}
@@ -575,9 +668,9 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
             ))}
           </div>
 
-          <Reveal reduced={reduced} className="overflow-x-auto border-b border-black/6">
+          <Reveal reduced={reduced} className="app-panel mt-4 overflow-x-auto border-b border-transparent">
             <div className="min-w-[920px] px-4 py-4 sm:px-6">
-              <div className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 px-4 py-3 text-[11px] uppercase tracking-[0.12em] text-[#9b938b]">
+              <div className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 px-4 py-3 text-[11px] uppercase tracking-[0.12em] text-[#84a2cc]">
                 <div />
                 <div>Before</div>
                 <div>With PromptShield</div>
@@ -586,57 +679,53 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
               {RESULTS.map((row) => (
                 <div
                   key={row.workflow}
-                  className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 border-t border-black/6 px-4 py-4"
+                  className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 border-t border-white/8 px-4 py-4"
                 >
                   <div>
-                    <div className="text-[15px] font-medium tracking-[-0.02em] text-[#2d2721]">
+                    <div className="text-[15px] font-medium tracking-[-0.02em] text-[#f4f8ff]">
                       {row.workflow}
                     </div>
                   </div>
-                  <div className="text-[13px] leading-[1.35] text-[#8e867f]">
+                  <div className="text-[13px] leading-[1.35] text-[#88a2ca]">
                     <div className="text-[11px] uppercase tracking-[0.1em]">{row.beforeLabel}</div>
-                    <div className="mt-1 text-[#5b534b]">{row.before}</div>
+                    <div className="mt-1 text-[#c8d8f0]">{row.before}</div>
                   </div>
-                  <div className="text-[13px] leading-[1.35] text-[#8e867f]">
+                  <div className="text-[13px] leading-[1.35] text-[#88a2ca]">
                     <div className="text-[11px] uppercase tracking-[0.1em]">{row.afterLabel}</div>
-                    <div className="mt-1 font-medium text-[#2b2620]">{row.after}</div>
+                    <div className="mt-1 font-medium text-[#eff6ff]">{row.after}</div>
                   </div>
-                  <div className="text-[13px] leading-[1.35] text-[#ff7641]">{row.result}</div>
+                  <div className="text-[13px] leading-[1.35] text-[#6cabff]">{row.result}</div>
                 </div>
               ))}
             </div>
           </Reveal>
 
-          <div className="grid border-b border-black/6 lg:grid-cols-3">
+          <div className="mt-4 grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-3">
             {OUTCOMES.map((outcome, index) => (
               <Reveal key={outcome.title} reduced={reduced} delay={index * 0.08} className="h-full">
-                <article className="flex h-full flex-col border-r border-black/6 px-6 py-6 last:border-r-0 lg:px-7">
-                  <h3 className="max-w-[22ch] text-[21px] leading-[1.2] tracking-[-0.03em] text-[#2d2721]">
+                <article className="app-panel flex h-full flex-col px-6 py-6 lg:px-7">
+                  <h3 className="max-w-[22ch] text-[21px] leading-[1.2] tracking-[-0.03em] text-[#f5f8ff]">
                     {outcome.title}
                   </h3>
-                  <div className="mt-16 text-[42px] font-medium tracking-[-0.05em] text-[#342d27]">
+                  <div className="mt-16 text-[42px] font-medium tracking-[-0.05em] text-[#6cabff]">
                     {outcome.stat}
                   </div>
-                  <div className="mt-1 text-[13px] text-[#8b837c]">{outcome.detail}</div>
+                  <div className="mt-1 text-[13px] text-[#8eaad2]">{outcome.detail}</div>
                 </article>
               </Reveal>
             ))}
           </div>
 
-          <div
-            id="security"
-            className="grid gap-8 px-6 py-7 sm:px-8 lg:grid-cols-[1.3fr,1fr] lg:gap-12"
-          >
+          <div id="security" className="grid gap-8 px-6 py-7 sm:px-8 lg:grid-cols-[1.3fr,1fr] lg:gap-12">
             <Reveal reduced={reduced}>
-              <div className="flex items-center gap-3 text-[24px] font-medium tracking-[-0.04em] text-[#2f2923]">
-                <ShieldCheck className="h-5 w-5 text-[#2f2923]" />
+              <div className="flex items-center gap-3 text-[24px] font-medium tracking-[-0.04em] text-[#eff6ff]">
+                <ShieldCheck className="h-5 w-5 text-[#eff6ff]" />
                 <span>Enterprise-grade security</span>
               </div>
-              <p className="mt-3 max-w-[64ch] text-[15px] leading-[1.6] text-[#776e66]">
-                Your data stays yours. PromptShield keeps review artifacts isolated,
-                preserves auditability, and never trains on your private releases.
+              <p className="mt-3 max-w-[64ch] text-[15px] leading-[1.6] text-[#93add4]">
+                Your data stays yours. PromptShield keeps review artifacts isolated, preserves auditability, and never trains on your private releases.
               </p>
-              <button className="mt-5 inline-flex items-center gap-2 text-[13px] font-semibold tracking-[-0.02em] text-[#2d2721]">
+              <button className="mt-5 inline-flex items-center gap-2 text-[13px] font-semibold tracking-[-0.02em] text-[#d6e5ff]">
                 <span>Security &amp; Trust Center</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
@@ -647,7 +736,7 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
                 {SECURITY_BADGES.map((badge) => (
                   <div
                     key={badge}
-                    className="grid min-h-[92px] place-items-center border border-black/6 bg-white/55 px-3 text-center text-[14px] font-semibold tracking-[0.04em] text-[#433b34]"
+                    className="app-panel-soft grid min-h-[92px] place-items-center px-3 text-center text-[14px] font-semibold tracking-[0.04em] text-[#e7f2ff]"
                   >
                     {badge}
                   </div>
@@ -656,8 +745,8 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
             </Reveal>
           </div>
 
-          <Reveal reduced={reduced} className="border-t border-black/6 px-5 py-4 sm:px-8">
-            <div className="grid gap-3 text-[12px] text-[#6f665e] sm:grid-cols-2 xl:grid-cols-6">
+          <Reveal reduced={reduced} className="border-t border-white/10 px-5 py-4 sm:px-8">
+            <div className="grid gap-3 text-[12px] text-[#93add4] sm:grid-cols-2 xl:grid-cols-6">
               {[
                 'Audited & tested',
                 'Fine-grained access controls',
@@ -667,7 +756,7 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
                 'Regional deployment options',
               ].map((item) => (
                 <div key={item} className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#2f2923]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#7eb5ff]" />
                   <span>{item}</span>
                 </div>
               ))}
@@ -686,26 +775,26 @@ export default function LandingPage({ onEnterDashboard, onEnterScan }) {
             <h2 className="mt-8 max-w-[720px] text-[clamp(3.4rem,6vw,6.4rem)] font-medium leading-[0.94] tracking-[-0.06em] text-white">
               Build once.
               <br />
-              Deploy across the team.
+              Review across the team.
               <br />
               Improve over time.
             </h2>
             <div className="mt-10">
-              <LiquidButton onClick={onEnterScan}>Request a demo</LiquidButton>
+              <LiquidButton onClick={onEnterDashboard}>Access dashboard</LiquidButton>
             </div>
           </Reveal>
         </div>
       </section>
 
-      <footer className="bg-[#30302e] px-6 py-12 text-white/78 sm:px-10 lg:px-12 lg:py-14">
-        <div className="mx-auto grid max-w-[1700px] gap-12 lg:grid-cols-[1.15fr_repeat(5,0.72fr)]">
+      <footer className="bg-[#000000] px-6 py-12 text-white/78 sm:px-10 lg:px-12 lg:py-14">
+        <div className="mx-auto grid max-w-[1700px] gap-12 lg:grid-cols-[1.15fr_repeat(4,0.8fr)]">
           <div>
             <div className="text-[22px] font-semibold tracking-[0.08em] text-white">PS</div>
             <div className="mt-8 max-w-[12ch] text-[clamp(2rem,3vw,3.2rem)] leading-[1.02] tracking-[-0.05em] text-white">
-              AI platform purpose-built for security teams.
+              Prompt security purpose-built for AI code review.
             </div>
             <div className="mt-8">
-              <LiquidButton onClick={onEnterDashboard}>Book a demo</LiquidButton>
+              <LiquidButton onClick={onEnterDashboard}>Access dashboard</LiquidButton>
             </div>
           </div>
 

@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -48,12 +45,12 @@ function Tile({ label, value, accent, hint }) {
         {label}
       </div>
       <div
-        className="terminal-mono mt-2 text-3xl font-light tabular-nums"
+        className="terminal-mono mt-3 text-[2.4rem] font-light leading-none tabular-nums"
         style={{ color: accent || '#f5f8ff' }}
       >
         {value}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-[#8da7cd]">{hint}</div>}
+      {hint && <div className="mt-2 text-[12px] leading-[1.5] text-[#9bb2d6]">{hint}</div>}
     </div>
   )
 }
@@ -66,12 +63,21 @@ function DashboardHeading({ kicker, title, body }) {
   return (
     <div>
       <p className="terminal-label text-[10px] font-semibold">{kicker}</p>
-      <h1 className="terminal-mono mt-3 text-3xl font-semibold uppercase leading-[1.08] tracking-[-0.02em] text-white">
+      <h1 className="terminal-mono mt-3 text-[clamp(2rem,3vw,3rem)] font-semibold leading-[1.02] tracking-[-0.04em] text-white">
         {title}
       </h1>
-      <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#9bb2d6]">
+      <p className="mt-4 max-w-2xl text-[14px] leading-[1.7] text-[#a9c1e6]">
         {body}
       </p>
+    </div>
+  )
+}
+
+function SectionHeading({ title, meta }) {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <h2 className="terminal-label text-[10px] font-semibold">{title}</h2>
+      {meta ? <span className="text-[12px] text-[#8da7cd]">{meta}</span> : null}
     </div>
   )
 }
@@ -167,6 +173,62 @@ function shortDay(d) {
   }
 }
 
+function RankedFindingTypes({ items = [] }) {
+  if (!items.length) {
+    return <p className="text-sm text-[#8da7cd]">No findings yet.</p>
+  }
+
+  const max = Math.max(...items.map((item) => item.count || 0), 1)
+
+  return (
+    <div className="space-y-3">
+      {items.slice(0, 5).map((item) => (
+        <div key={item.type} className="terminal-soft px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[13px] text-[#eef5ff]">{item.type}</div>
+            <div className="terminal-mono text-[13px] tabular-nums text-[#8fbcff]">{item.count}</div>
+          </div>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/6">
+            <div
+              className="h-full rounded-full bg-[#5ea8ff]"
+              style={{ width: `${Math.max((item.count / max) * 100, 8)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function RepoRiskList({ items = [] }) {
+  if (!items.length) {
+    return <p className="text-sm text-[#8da7cd]">No repository rollups yet.</p>
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.slice(0, 5).map((repo) => (
+        <div key={repo.repo_full_name} className="terminal-soft px-4 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-[13px] font-medium text-[#eef5ff]">{repo.repo_full_name}</div>
+              <div className="mt-1 text-[12px] text-[#8da7cd]">
+                {repo.scan_count} scan{repo.scan_count === 1 ? '' : 's'}
+              </div>
+            </div>
+            <div
+              className="terminal-mono text-[24px] leading-none tabular-nums"
+              style={{ color: avgRiskColor(repo.avg_risk) }}
+            >
+              {Math.round(repo.avg_risk)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function DashboardPage({ onSelectScan }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -218,12 +280,12 @@ export default function DashboardPage({ onSelectScan }) {
   const avgRisk = data?.avg_risk ?? 0
 
   return (
-    <div className="terminal-grid mx-auto w-full max-w-7xl px-6 py-8">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="terminal-grid mx-auto w-full max-w-[1540px] px-6 py-8">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <DashboardHeading
           kicker="GitHub PR activity"
           title="Security posture"
-          body="Every pull request reviewed by the PromptShield bot, scored against policy, and tracked across repositories from one command surface."
+          body="Track pull-request risk, policy failures, and repository coverage from one readable command surface."
         />
         <div className="flex items-center gap-2">
           {!empty && (
@@ -272,32 +334,36 @@ export default function DashboardPage({ onSelectScan }) {
         <>
           <section className="terminal-panel relative overflow-hidden">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#0c1a2b] via-[#091423] to-[#07111d]" />
-            <div className="relative grid gap-6 px-6 py-6 md:grid-cols-[260px,1fr] md:items-center">
-              <div className="flex flex-col items-center">
-                <RiskGauge score={Math.round(avgRisk)} size={180} />
-                <div className="terminal-label mt-3 text-[10px] font-medium">
-                  Average risk across {data.total_pr_scans} scan{data.total_pr_scans === 1 ? '' : 's'}
+            <div className="relative grid gap-5 px-6 py-6 xl:grid-cols-[320px,1fr]">
+              <div className="terminal-soft flex flex-col items-center px-6 py-6 text-center">
+                <div className="terminal-label text-[10px] font-semibold">Average risk</div>
+                <div className="mt-4">
+                  <RiskGauge score={Math.round(avgRisk)} size={176} />
                 </div>
-                <div className="mt-2">
+                <p className="mt-4 max-w-[24ch] text-[13px] leading-[1.6] text-[#9bb2d6]">
+                  Mean score across {data.total_pr_scans} reviewed PR
+                  {data.total_pr_scans === 1 ? '' : 's'}, with policy gate context applied.
+                </p>
+                <div className="mt-4">
                   <TrendDelta daily={data.daily_velocity} />
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Tile
                   label="Total PR scans"
                   value={data.total_pr_scans ?? 0}
-                  hint="Across all connected repos"
+                  hint="All pull requests reviewed across connected repositories."
                 />
                 <Tile
                   label={`Gate failures (≥${data.threshold ?? 70})`}
                   value={data.gate_failures ?? 0}
                   accent="#ff7d8f"
-                  hint="Blocked before merge"
+                  hint="Pull requests blocked before merge by policy threshold."
                 />
                 <Tile
                   label="Repos covered"
                   value={data.repos_covered ?? 0}
-                  hint="Unique repositories"
+                  hint="Unique repositories currently sending review activity."
                 />
                 <Tile
                   label="Avg findings / PR"
@@ -307,206 +373,133 @@ export default function DashboardPage({ onSelectScan }) {
                       : '0.00'
                   }
                   accent="#7db2ff"
-                  hint="Signal density"
+                  hint="Average number of flagged findings per reviewed pull request."
                 />
               </div>
             </div>
           </section>
 
-          <FrostSection className="mt-6">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="terminal-label text-[10px] font-semibold">
-                Severity mix
-              </h2>
-              <span className="text-[11px] text-[#8da7cd]">
-                {(severity.critical || 0) +
-                  (severity.high || 0) +
-                  (severity.medium || 0) +
-                  (severity.low || 0)}{' '}
-                findings total
-              </span>
-            </div>
-            <StackedSeverityBar severity={severity} />
-          </FrostSection>
-
-          {data.daily_velocity?.length > 0 && (
-            <FrostSection className="mt-6">
-              <h2 className="terminal-label mb-3 text-[10px] font-semibold">
-                Risk trend (14 days)
-              </h2>
-              <div className="h-56 w-full">
-                <ResponsiveContainer>
-                  <AreaChart
-                    data={data.daily_velocity.map((p) => ({
-                      ...p,
-                      label: shortDay(p.date),
-                    }))}
-                    margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-                  >
-                    <defs>
-                      <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#5ea8ff" stopOpacity={0.45} />
-                        <stop offset="100%" stopColor="#5ea8ff" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" vertical={false} />
-                    <XAxis
-                      dataKey="label"
-                      stroke="#86a2cb"
-                      tickLine={false}
-                      axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }}
-                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
-                    />
-                    <YAxis
-                      domain={[0, 100]}
-                      stroke="#86a2cb"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
-                    />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Area
-                      type="monotone"
-                      dataKey="avg_risk"
-                      stroke="#5ea8ff"
-                      strokeWidth={2}
-                      fill="url(#riskFill)"
-                      name="Avg risk"
-                      animationDuration={700}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </FrostSection>
-          )}
-
-          <FrostSection className="mt-6">
-              <h2 className="terminal-label mb-3 text-[10px] font-semibold">
-                Top vulnerability types
-              </h2>
-            {data.top_finding_types?.length > 0 ? (
-              <div className="h-56 w-full">
-                <ResponsiveContainer>
-                  <BarChart
-                    layout="vertical"
-                    data={data.top_finding_types}
-                    margin={{ top: 4, right: 24, left: 32, bottom: 4 }}
-                  >
-                    <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      allowDecimals={false}
-                      stroke="#86a2cb"
-                      tickLine={false}
-                      axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }}
-                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="type"
-                      width={170}
-                      stroke="#86a2cb"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#d7e6ff' }}
-                    />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Bar dataKey="count" fill="#5ea8ff" animationDuration={700} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="text-sm text-[#8da7cd]">No findings yet.</p>
-            )}
-          </FrostSection>
-
-          <section className="mt-6">
-            <h2 className="terminal-label mb-3 text-[10px] font-semibold">
-              Recent pull requests
-            </h2>
-            <div className="terminal-panel overflow-x-auto">
-              <table className="terminal-table w-full text-left">
-                <thead>
-                  <tr className="border-b border-white/10">
-                    {[
-                      'Repository',
-                      'PR',
-                      'Commit',
-                      'Score',
-                      'State',
-                      'Time',
-                      '',
-                    ].map((header, index) => (
-                      <th
-                        key={index}
-                        className="terminal-label px-4 py-2 text-[10px] font-semibold"
+          <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.35fr),minmax(320px,0.9fr)]">
+            <div className="space-y-6">
+              {data.daily_velocity?.length > 0 && (
+                <FrostSection>
+                  <SectionHeading
+                    title="Risk trend"
+                    meta="14-day rolling view"
+                  />
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer>
+                      <AreaChart
+                        data={data.daily_velocity.map((p) => ({
+                          ...p,
+                          label: shortDay(p.date),
+                        }))}
+                        margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
                       >
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recent.map((scan) => (
-                    <PRScanRow
-                      key={scan.id}
-                      scan={scan}
-                      threshold={data.threshold}
-                      onSelect={onSelectScan}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                        <defs>
+                          <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#5ea8ff" stopOpacity={0.45} />
+                            <stop offset="100%" stopColor="#5ea8ff" stopOpacity={0.05} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" vertical={false} />
+                        <XAxis
+                          dataKey="label"
+                          stroke="#86a2cb"
+                          tickLine={false}
+                          axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }}
+                          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono', fill: '#86a2cb' }}
+                        />
+                        <YAxis
+                          domain={[0, 100]}
+                          stroke="#86a2cb"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono', fill: '#86a2cb' }}
+                        />
+                        <Tooltip contentStyle={TOOLTIP_STYLE} />
+                        <Area
+                          type="monotone"
+                          dataKey="avg_risk"
+                          stroke="#5ea8ff"
+                          strokeWidth={2}
+                          fill="url(#riskFill)"
+                          name="Avg risk"
+                          animationDuration={700}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </FrostSection>
+              )}
 
-          {data.by_repo?.length > 0 && (
-            <section className="mt-6">
-              <h2 className="terminal-label mb-3 text-[10px] font-semibold">
-                Risk by repository
-              </h2>
-              <div className="terminal-panel p-5">
-                <div className="h-64 w-full">
-                  <ResponsiveContainer>
-                    <BarChart
-                      layout="vertical"
-                      data={data.by_repo.map((repo) => ({
-                        name: repo.repo_full_name,
-                        avg_risk: repo.avg_risk,
-                        scan_count: repo.scan_count,
-                      }))}
-                      margin={{ top: 8, right: 24, left: 32, bottom: 8 }}
-                    >
-                      <CartesianGrid stroke="rgba(129, 159, 224, 0.12)" horizontal={false} />
-                      <XAxis
-                        type="number"
-                        domain={[0, 100]}
-                        stroke="#86a2cb"
-                        tickLine={false}
-                        axisLine={{ stroke: 'rgba(129, 159, 224, 0.12)' }}
-                        tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#86a2cb' }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        width={160}
-                        stroke="#86a2cb"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fontSize: 11, fontFamily: 'Sora', fill: '#d7e6ff' }}
-                      />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} />
-                      <Bar dataKey="avg_risk" animationDuration={700}>
-                        {data.by_repo.map((repo, index) => (
-                          <Cell key={index} fill={avgRiskColor(repo.avg_risk)} />
+              <section>
+                <SectionHeading
+                  title="Recent pull requests"
+                  meta={`${data.recent?.length || 0} most recent`}
+                />
+                <div className="terminal-panel overflow-x-auto">
+                  <table className="terminal-table w-full text-left">
+                    <thead>
+                      <tr className="border-b border-white/10">
+                        {[
+                          'Repository',
+                          'PR',
+                          'Commit',
+                          'Score',
+                          'State',
+                          'Time',
+                          '',
+                        ].map((header, index) => (
+                          <th
+                            key={index}
+                            className="terminal-label px-4 py-3 text-[10px] font-semibold"
+                          >
+                            {header}
+                          </th>
                         ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.recent.map((scan) => (
+                        <PRScanRow
+                          key={scan.id}
+                          scan={scan}
+                          threshold={data.threshold}
+                          onSelect={onSelectScan}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-            </section>
-          )}
+              </section>
+            </div>
+
+            <div className="space-y-6">
+              <FrostSection>
+                <SectionHeading
+                  title="Severity mix"
+                  meta={`${
+                    (severity.critical || 0) +
+                    (severity.high || 0) +
+                    (severity.medium || 0) +
+                    (severity.low || 0)
+                  } findings total`}
+                />
+                <StackedSeverityBar severity={severity} />
+              </FrostSection>
+
+              <FrostSection>
+                <SectionHeading title="Top vulnerability types" meta="Most frequent findings" />
+                <RankedFindingTypes items={data.top_finding_types || []} />
+              </FrostSection>
+
+              <FrostSection>
+                <SectionHeading title="Risk by repository" meta="Average score by repo" />
+                <RepoRiskList items={data.by_repo || []} />
+              </FrostSection>
+            </div>
+          </div>
         </>
       )}
     </div>

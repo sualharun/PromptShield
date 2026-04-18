@@ -29,29 +29,29 @@ function PRScanRow({ scan, threshold = 70, onSelect }) {
       onClick={() => onSelect?.(scan.id)}
       className="app-table-row terminal-mono cursor-pointer border-b border-white/8 bg-transparent"
     >
-      <td className="px-4 py-3 text-sm text-[#eef5ff]">
+      <td className="px-4 py-4 text-sm text-[#eef5ff]">
         <div className="flex flex-col">
           <span className="font-medium">{scan.repo_full_name || '—'}</span>
           {scan.pr_title && (
-            <span className="mt-0.5 truncate text-[11px] text-[#8da7cd]">
+            <span className="mt-1 truncate text-[12px] text-[#8da7cd]">
               {scan.pr_title}
             </span>
           )}
         </div>
       </td>
-      <td className="px-4 py-3 font-mono text-sm text-[#bfd0ef]">
+      <td className="px-4 py-4 font-mono text-sm text-[#bfd0ef]">
         #{scan.pr_number ?? '—'}
       </td>
-      <td className="px-4 py-3 font-mono text-[11px] text-[#8da7cd]">
+      <td className="px-4 py-4 font-mono text-[11px] text-[#8da7cd]">
         {sha || '—'}
       </td>
       <td
-        className="px-4 py-3 font-mono text-base font-semibold tabular-nums"
+        className="px-4 py-4 font-mono text-[18px] font-semibold tabular-nums"
         style={{ color: scoreColor(scan.risk_score) }}
       >
         {scan.risk_score}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-4">
         <span
           className={`inline-flex items-center gap-1.5 border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${
             failed
@@ -66,10 +66,10 @@ function PRScanRow({ scan, threshold = 70, onSelect }) {
           {failed ? 'Gate failed' : 'Passing'}
         </span>
       </td>
-      <td className="px-4 py-3 text-[11px] text-[#8da7cd]">
+      <td className="px-4 py-4 text-[12px] text-[#8da7cd]">
         {fmt(scan.created_at)}
       </td>
-      <td className="px-4 py-3 text-right">
+      <td className="px-4 py-4 text-right">
         {scan.pr_url && (
           <a
             href={scan.pr_url}
