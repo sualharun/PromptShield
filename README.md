@@ -173,10 +173,16 @@ DASHBOARD_BASE_URL=http://localhost:5173
 
 ### 4. Local webhook forwarding
 
-Use one of these:
+**ngrok (recommended)** — from the repo root, with `uvicorn` already on port 8000:
+
+1. Terminal A: `cd backend && uvicorn main:app --reload --port 8000`
+2. Terminal B: `./backend/scripts/ngrok_http_8000.sh` (or `ngrok http 8000`)
+3. Terminal C: `./backend/scripts/github_webhook_url.sh` — prints the exact **Webhook URL** to paste into your GitHub App settings (`…/api/github/webhook`). Re-run step 3 whenever ngrok restarts with a new hostname.
+
+Alternatives:
 
 - `npx smee-client --url https://smee.io/YOUR_CHANNEL --target http://localhost:8000/api/github/webhook`
-- `ngrok http 8000` then set GitHub webhook URL to `https://<ngrok-id>.ngrok.io/api/github/webhook`
+- `ngrok http 8000` manually, then set GitHub webhook URL to `https://<ngrok-id>.ngrok-free.app/api/github/webhook` (must end with `/api/github/webhook`).
 
 ### 5. Validate end-to-end
 
@@ -283,6 +289,7 @@ All backend settings are env-driven (see `backend/.env.example`):
 | `POST` | `/api/policy/validate` | Validate a `.promptshield.yml` policy file. |
 | `GET` | `/api/policy/example` | Example policy YAML. |
 | `POST` | `/api/github/webhook` | GitHub App webhook (signature-verified). |
+| `POST` | `/api/github/sync` | Backfill scans: walks **all** App installations, **all** installed repos (paginated), and **all open PRs** per repo. Optional `?include_closed=true` scans up to 500 recently-updated **closed** PRs per repo (webhook misses). Branch-only pushes never appear — only pull requests. |
 | `GET` | `/api/health` | Liveness + version + `github_app_configured` + Mongo status. |
 
 #### MongoDB Atlas-powered endpoints (`/api/v2/*`)

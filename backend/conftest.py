@@ -75,16 +75,11 @@ def mock_ai_scan(monkeypatch):
 
     # Patch every import path the function is reachable through.
     monkeypatch.setattr("ai_analyzer.ai_scan", _fake_ai_scan)
+    monkeypatch.setattr("scan_pipeline.ai_scan", _fake_ai_scan)
     try:
         import main as _main
 
         monkeypatch.setattr(_main, "ai_scan", _fake_ai_scan)
-    except Exception:
-        pass
-    try:
-        import github_webhook as _gh
-
-        monkeypatch.setattr(_gh, "ai_scan", _fake_ai_scan)
     except Exception:
         pass
     return _fake_ai_scan

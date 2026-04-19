@@ -20,7 +20,7 @@ def test_scan_rejects_empty():
 
 def test_scan_runs_and_persists(monkeypatch):
     # Force AI layer off so the test is deterministic.
-    monkeypatch.setattr(main, "ai_scan", lambda text: [])
+    monkeypatch.setattr("scan_pipeline.ai_scan", lambda text: [])
     r = client.post(
         "/api/scan",
         json={"text": 'prompt = f"do this: {user_input}"\nkey = "sk-proj-AbCdEfGhIjKlMnOpQrStUv12"'},
@@ -47,7 +47,7 @@ def test_rate_limiter(monkeypatch):
     from rate_limit import SlidingWindowLimiter
 
     monkeypatch.setattr(main, "scan_limiter", SlidingWindowLimiter(2, 60))
-    monkeypatch.setattr(main, "ai_scan", lambda text: [])
+    monkeypatch.setattr("scan_pipeline.ai_scan", lambda text: [])
     payload = {"text": "hello world this is fine"}
     assert client.post("/api/scan", json=payload).status_code == 200
     assert client.post("/api/scan", json=payload).status_code == 200

@@ -19,6 +19,9 @@ import { loadAgentAccounts, saveAgentAccounts } from './lib/agentAccounts.js'
 
 const API = ''
 
+/** POST /api/scan can exceed 30s when Gemini + embeddings run; keep above worst-case latency. */
+const SCAN_FETCH_TIMEOUT_MS = 120_000
+
 const NAV = [
   { id: 'home', label: 'Home' },
   { id: 'dashboard', label: 'Dashboard' },
@@ -83,7 +86,7 @@ function AppShell() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),
-        }, 30000)
+        }, SCAN_FETCH_TIMEOUT_MS)
         if (!r.ok) {
           const detail = await r.json().catch(() => ({}))
           throw new Error(detail.detail || `Scan failed (${r.status})`)

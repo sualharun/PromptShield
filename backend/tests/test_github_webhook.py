@@ -97,10 +97,12 @@ class FakeGitHubClient:
 
 
 def _setup(monkeypatch):
+    import scan_pipeline
+
     monkeypatch.setattr(main.settings, "GITHUB_WEBHOOK_SECRET", SECRET)
     monkeypatch.setattr(github_webhook.settings, "GITHUB_WEBHOOK_SECRET", SECRET)
     monkeypatch.setattr(github_webhook.settings, "RISK_GATE_THRESHOLD", 50)
-    monkeypatch.setattr(github_webhook, "ai_scan", lambda text: [])
+    monkeypatch.setattr(scan_pipeline, "ai_scan", lambda text: [])
     monkeypatch.setattr(github_webhook, "get_installation_token", lambda iid: "tok")
     monkeypatch.setattr(github_webhook, "_make_client", lambda token: FakeGitHubClient())
     return TestClient(main.app)
@@ -110,7 +112,7 @@ def test_rejects_bad_signature(monkeypatch):
     client = _setup(monkeypatch)
     body = json.dumps(_pr_payload()).encode()
     r = client.post(
-        "/api/github/webhook",
+        "/api/github/webhook?wait=true",
         content=body,
         headers={
             "x-hub-signature-256": "sha256=deadbeef",
@@ -126,7 +128,7 @@ def test_ping_event_succeeds_with_valid_signature(monkeypatch):
     client = _setup(monkeypatch)
     body = b"{}"
     r = client.post(
-        "/api/github/webhook",
+        "/api/github/webhook?wait=true",
         content=body,
         headers={
             "x-hub-signature-256": _sign(body),
@@ -143,7 +145,7 @@ def test_pull_request_runs_full_pipeline(monkeypatch):
     client = _setup(monkeypatch)
     body = json.dumps(_pr_payload()).encode()
     r = client.post(
-        "/api/github/webhook",
+        "/api/github/webhook?wait=true",
         content=body,
         headers={
             "x-hub-signature-256": _sign(body),

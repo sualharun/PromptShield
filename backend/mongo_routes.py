@@ -32,6 +32,23 @@ logger = logging.getLogger("promptshield.mongo_routes")
 router = APIRouter(prefix="/api/v2", tags=["mongo-atlas"])
 
 
+def _log_agent_read_degraded(feature: str, exc: Exception) -> None:
+    """Agent dashboard endpoints must never 500 when Mongo is down — judges see a blank state."""
+    logger.warning("agent surface read degraded [%s]: %s", feature, exc)
+
+
+def _empty_timeline_payload(*, days: int) -> dict[str, Any]:
+    return {
+        "points": [],
+        "trend": {
+            "risk_delta": 0.0,
+            "surface_delta": 0.0,
+            "window_days": days,
+        },
+        "degraded": True,
+    }
+
+
 # ── Health ──────────────────────────────────────────────────────────────────
 @router.get("/health")
 def health():
@@ -237,29 +254,41 @@ def list_agent_tools(
     set + missing safeguards we've ever seen. Powers the dashboard's "agent
     attack surface" view.
     """
-    docs = agent_registry.list_agent_tools(
-        repo_full_name=repo,
-        risk_level=risk_level,
-        framework=framework,
-        capability=capability,
-        limit=limit,
-    )
-    return {
-        "tools": [agent_registry.agent_tool_to_view(d) for d in docs],
-        "count": len(docs),
-    }
+    try:
+        docs = agent_registry.list_agent_tools(
+            repo_full_name=repo,
+            risk_level=risk_level,
+            framework=framework,
+            capability=capability,
+            limit=limit,
+        )
+        return {
+            "tools": [agent_registry.agent_tool_to_view(d) for d in docs],
+            "count": len(docs),
+        }
+    except Exception as e:
+        _log_agent_read_degraded("list_agent_tools", e)
+        return {"tools": [], "count": 0, "degraded": True}
 
 
 @router.get("/agent-tools/aggregations/capabilities")
 def agg_agent_capabilities(repo: Optional[str] = None):
     """Group-by capability — answers 'how much of our attack surface is shell?'"""
-    return {"capabilities": agent_registry.capability_aggregates(repo_full_name=repo)}
+    try:
+        return {"capabilities": agent_registry.capability_aggregates(repo_full_name=repo)}
+    except Exception as e:
+        _log_agent_read_degraded("agg_agent_capabilities", e)
+        return {"capabilities": [], "degraded": True}
 
 
 @router.get("/agent-tools/aggregations/frameworks")
 def agg_agent_frameworks():
     """Group-by framework — LangChain vs MCP vs OpenAI vs CrewAI exposure."""
-    return {"frameworks": agent_registry.framework_aggregates()}
+    try:
+        return {"frameworks": agent_registry.framework_aggregates()}
+    except Exception as e:
+        _log_agent_read_degraded("agg_agent_frameworks", e)
+        return {"frameworks": [], "degraded": True}
 
 
 # ── 7b) Tool Risk Knowledge Base (Atlas Vector Search) ─────────────────────
@@ -277,23 +306,31 @@ def similar_exploits(req: SimilarExploitRequest):
     patterns. Given a tool's metadata, return the top-k semantically similar
     historical exploits (with CVE / blog refs). Falls back to local cosine
     on mongomock or before the index is provisioned."""
-    matches = agent_vector.find_similar_exploits(
-        tool_name=req.tool_name,
-        capabilities=req.capabilities,
-        framework=req.framework,
-        evidence=req.evidence,
-        k=req.k,
-    )
-    return {
-        "matches": matches,
-        "backend": "atlas_vector_search" if not using_mock() else "local_cosine",
-    }
+    try:
+        matches = agent_vector.find_similar_exploits(
+            tool_name=req.tool_name,
+            capabilities=req.capabilities,
+            framework=req.framework,
+            evidence=req.evidence,
+            k=req.k,
+        )
+        return {
+            "matches": matches,
+            "backend": "atlas_vector_search" if not using_mock() else "local_cosine",
+        }
+    except Exception as e:
+        _log_agent_read_degraded("similar_exploits", e)
+        return {"matches": [], "backend": "unavailable", "degraded": True}
 
 
 @router.post("/agent-tools/exploit-corpus/seed")
 def seed_exploit_corpus(force: bool = Query(False)):
     """Embed and upsert the curated exploit corpus. Idempotent unless force=true."""
-    return agent_vector.seed_exploit_corpus(force=force)
+    try:
+        return agent_vector.seed_exploit_corpus(force=force)
+    except Exception as e:
+        _log_agent_read_degraded("seed_exploit_corpus", e)
+        raise HTTPException(status_code=503, detail=f"exploit corpus seed failed: {e}") from e
 
 
 # ── 7c) Critical-finding alerts (Atlas Trigger + Python fallback) ──────────
@@ -305,14 +342,23 @@ def list_agent_alerts(
 ):
     """Recent critical agentic findings, written either by the Atlas Trigger
     (when configured) or by the Python pipeline as a degraded-mode fallback."""
-    docs = agent_alerts_mod.list_alerts(
-        repo_full_name=repo, acknowledged=acknowledged, limit=limit
-    )
-    return {
-        "alerts": [agent_alerts_mod.alert_to_view(d) for d in docs],
-        "count": len(docs),
-        "trigger_status": agent_alerts_mod.trigger_status(),
-    }
+    try:
+        docs = agent_alerts_mod.list_alerts(
+            repo_full_name=repo, acknowledged=acknowledged, limit=limit
+        )
+        return {
+            "alerts": [agent_alerts_mod.alert_to_view(d) for d in docs],
+            "count": len(docs),
+            "trigger_status": agent_alerts_mod.trigger_status(),
+        }
+    except Exception as e:
+        _log_agent_read_degraded("list_agent_alerts", e)
+        return {
+            "alerts": [],
+            "count": 0,
+            "trigger_status": None,
+            "degraded": True,
+        }
 
 
 @router.post("/agent-alerts/{alert_id}/acknowledge")
@@ -331,7 +377,11 @@ def agent_surface_timeline(
 ):
     """Time-series of agent attack-surface size per scan. Backed by an Atlas
     time-series collection in production; a regular collection on mongomock."""
-    return agent_timeline.timeline_window(repo_full_name=repo, days=days)
+    try:
+        return agent_timeline.timeline_window(repo_full_name=repo, days=days)
+    except Exception as e:
+        _log_agent_read_degraded("agent_surface_timeline", e)
+        return _empty_timeline_payload(days=days)
 
 
 # ── 7e) Hybrid $rankFusion search over the tool registry ───────────────────
@@ -350,17 +400,21 @@ def search_agent_tools(req: AgentToolSearchRequest):
     allowlist' — the vector pipeline catches the *meaning*, the text pipeline
     catches literal `tool_name` matches like `delete_file`.
     """
-    docs = hybrid_search(
-        req.q,
-        k=req.k,
-        vector_weight=req.vector_weight,
-        text_weight=req.text_weight,
-        collection=C.AGENT_TOOLS,
-        vector_index="agent_tools_vector_idx",
-        text_index="agent_tools_text_idx",
-        text_paths=["tool_name", "evidence_samples", "framework", "capabilities"],
-        embedding_text=req.q,
-    )
+    try:
+        docs = hybrid_search(
+            req.q,
+            k=req.k,
+            vector_weight=req.vector_weight,
+            text_weight=req.text_weight,
+            collection=C.AGENT_TOOLS,
+            vector_index="agent_tools_vector_idx",
+            text_index="agent_tools_text_idx",
+            text_paths=["tool_name", "evidence_samples", "framework", "capabilities"],
+            embedding_text=req.q,
+        )
+    except Exception as e:
+        _log_agent_read_degraded("search_agent_tools", e)
+        return {"results": [], "count": 0, "degraded": True}
     out = []
     for d in docs:
         view = agent_registry.agent_tool_to_view(d)

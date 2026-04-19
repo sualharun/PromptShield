@@ -13,7 +13,11 @@ export async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TI
 
 export function asNetworkErrorMessage(err, fallback = 'Request failed') {
   if (err?.name === 'AbortError') {
-    return 'Request timed out. Check backend server and try again.'
+    return (
+      'Request timed out before the server responded. If the scan is large or uses Gemini/Voyage, try again ' +
+      'or set PROMPTSHIELD_SCAN_MODE=fast in backend/.env. Otherwise confirm the API is on port 8000 ' +
+      'and the Vite dev server proxies /api.'
+    )
   }
   return err?.message || fallback
 }

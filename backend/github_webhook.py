@@ -4,7 +4,7 @@ Flow on a `pull_request` event (opened/synchronize/reopened):
     1. Open an in-progress Check Run on the PR head SHA.
     2. List PR files; for each text file under MAX_INPUT_CHARS:
          a. Fetch its content at the head SHA.
-         b. Run static_scan + ai_scan in parallel (same pipeline as the web flow).
+         b. Run the same core scan as /api/scan (static + dataflow; + AI in full mode).
          c. Filter findings to lines actually added in the diff.
     3. Aggregate findings, compute risk score, persist a single Scan row
        (source="github") so it surfaces in the dashboard.
@@ -15,30 +15,27 @@ Flow on a `pull_request` event (opened/synchronize/reopened):
 import json
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
-from ai_analyzer import ai_scan
+from scan_pipeline import parallel_core_scan
 from config import settings
 import repositories as repos
 import agent_registry
 import agent_alerts as agent_alerts_mod
 import agent_timeline
 from diff_utils import filter_findings_to_lines, parse_added_lines
-from github_app import GitHubClient, get_installation_token, sign_app_jwt, verify_webhook_signature
+from github_app import GITHUB_API, USER_AGENT, GitHubClient, get_installation_token, sign_app_jwt, verify_webhook_signature
 from scanner import (
     calculate_risk_score,
     detect_language_from_filename,
     merge_findings,
-    static_scan,
 )
 from score_breakdown import compute_breakdown, render_breakdown_markdown
 from llm_target import detect_llm_targets
-from dataflow import scan_dataflow
 from dependency_scan import scan_dependencies
 from notifications import notify_gate_failure
 from policy import PolicyError, apply_policy, parse_policy, render_policy_summary
@@ -49,6 +46,58 @@ logger = logging.getLogger("promptshield.webhook")
 router = APIRouter(prefix="/api/github", tags=["github"])
 
 ACTIONS_TO_HANDLE = {"opened", "synchronize", "reopened"}
+
+# GitHub REST pagination — sync must not silently drop repos/PRs beyond the first page.
+_SYNC_PER_PAGE = 100
+_SYNC_MAX_PAGES = 50  # safety cap (e.g. 5000 PRs per repo is plenty)
+_SYNC_MAX_PAGES_CLOSED = 5  # backfill closed PRs in smaller batches (500 max)
+
+
+def _github_get_json(url: str, headers: dict, *, params: dict | None = None, timeout: float = 30.0) -> Any:
+    r = httpx.get(url, headers=headers, params=params or {}, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+
+def _paginate_github_array(
+    url: str,
+    headers: dict,
+    *,
+    params_base: dict | None = None,
+    max_pages: int = _SYNC_MAX_PAGES,
+) -> List[Any]:
+    """Collect all pages for endpoints that return a JSON array (installations, pulls, …)."""
+    out: List[Any] = []
+    for page in range(1, max_pages + 1):
+        params = {**(params_base or {}), "per_page": _SYNC_PER_PAGE, "page": page}
+        chunk = _github_get_json(url, headers, params=params)
+        if not isinstance(chunk, list):
+            raise TypeError(f"Expected list from {url}, got {type(chunk)}")
+        out.extend(chunk)
+        if len(chunk) < _SYNC_PER_PAGE:
+            break
+    return out
+
+
+def _paginate_installation_repositories(token: str) -> List[dict]:
+    repos: List[dict] = []
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": USER_AGENT,
+    }
+    for page in range(1, _SYNC_MAX_PAGES + 1):
+        data = _github_get_json(
+            f"{GITHUB_API}/installation/repositories",
+            headers,
+            params={"page": page, "per_page": _SYNC_PER_PAGE},
+        )
+        batch = data.get("repositories") or []
+        repos.extend(batch)
+        if len(batch) < _SYNC_PER_PAGE:
+            break
+    return repos
+
 
 # Patched by tests to inject an httpx.MockTransport.
 def _make_client(token: str) -> GitHubClient:
@@ -88,13 +137,7 @@ def _comment_body(f: Dict[str, Any]) -> str:
 
 def _scan_one_file(file_obj: Dict[str, Any], content: str) -> List[Dict[str, Any]]:
     language = detect_language_from_filename(file_obj.get("filename") or "")
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        s_future = pool.submit(static_scan, content, language)
-        a_future = pool.submit(ai_scan, content)
-        df_future = pool.submit(scan_dataflow, content)
-        static_results = s_future.result()
-        ai_results = a_future.result()
-        dataflow_results = df_future.result()
+    static_results, ai_results, dataflow_results = parallel_core_scan(content, language)
     merged = merge_findings(static_results + dataflow_results, ai_results)
     added = parse_added_lines(file_obj.get("patch"))
     on_diff = filter_findings_to_lines(merged, added)
@@ -540,72 +583,76 @@ def _scan_pr_for_sync(
 
 
 @router.post("/sync")
-def github_sync():
-    """Fetch open PRs from all installed repos and scan them into the dashboard."""
+def github_sync(include_closed: bool = Query(False)):
+    """Fetch pull requests from all installed repos and scan missing head SHAs into Mongo.
+
+    - **Open PRs** are always enumerated (all pages, up to a safety cap).
+    - **Closed PRs** are optional (`?include_closed=true`) for backfill when webhooks were missed;
+      uses GitHub's default sort (most recently updated first).
+
+    Branch pushes that never became a PR do not appear here — the bot listens for
+    ``pull_request`` events (and this sync calls the pulls API, which lists PRs only).
+    """
     if not settings.GITHUB_APP_ID or not settings.GITHUB_APP_PRIVATE_KEY:
         raise HTTPException(status_code=503, detail="GitHub App not configured")
 
     app_jwt = sign_app_jwt()
-    # List all installations
-    r = httpx.get(
-        f"https://api.github.com/app/installations",
-        headers={
-            "Authorization": f"Bearer {app_jwt}",
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "PromptShield/0.3",
-        },
-        timeout=10.0,
-    )
-    r.raise_for_status()
-    installations = r.json()
+    app_headers = {
+        "Authorization": f"Bearer {app_jwt}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": USER_AGENT,
+    }
+    installations = _paginate_github_array(f"{GITHUB_API}/app/installations", app_headers)
 
     results = []
+
     for inst in installations:
         inst_id = inst["id"]
         token = get_installation_token(inst_id)
-        # List repos for this installation
-        repos_r = httpx.get(
-            f"https://api.github.com/installation/repositories",
-            headers={
-                "Authorization": f"token {token}",
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "PromptShield/0.3",
-            },
-            timeout=10.0,
-        )
-        repos_r.raise_for_status()
-        repo_list = repos_r.json().get("repositories", [])
+        token_headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": USER_AGENT,
+        }
+        repo_list = _paginate_installation_repositories(token)
 
         for repo_obj in repo_list:
             owner = repo_obj["owner"]["login"]
             repo_name = repo_obj["name"]
             full = repo_obj["full_name"]
+            pulls_url = f"{GITHUB_API}/repos/{owner}/{repo_name}/pulls"
 
-            # List open PRs
-            prs_r = httpx.get(
-                f"https://api.github.com/repos/{owner}/{repo_name}/pulls",
-                headers={
-                    "Authorization": f"token {token}",
-                    "Accept": "application/vnd.github+json",
-                    "User-Agent": "PromptShield/0.3",
-                },
-                params={"state": "open", "per_page": 10},
-                timeout=10.0,
-            )
-            if prs_r.status_code != 200:
-                continue
-            prs = prs_r.json()
+            states = ["open"]
+            if include_closed:
+                states.append("closed")
 
-            for pr in prs:
-                result = _scan_pr_for_sync(owner, repo_name, full, pr, token)
-                if result:
-                    results.append(result)
+            for state in states:
+                try:
+                    prs = _paginate_github_array(
+                        pulls_url,
+                        token_headers,
+                        params_base={"state": state},
+                        max_pages=_SYNC_MAX_PAGES
+                        if state == "open"
+                        else _SYNC_MAX_PAGES_CLOSED,
+                    )
+                except httpx.HTTPStatusError:
+                    continue
+
+                for pr in prs:
+                    result = _scan_pr_for_sync(owner, repo_name, full, pr, token)
+                    if result:
+                        results.append(result)
 
     return {"ok": True, "synced": len(results), "scans": results}
 
 
 @router.post("/webhook")
-async def github_webhook(request: Request):
+async def github_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    wait: bool = Query(False, description="Run scan inline (tests/debug only)."),
+):
     body = await request.body()
     signature = request.headers.get("x-hub-signature-256")
     event = request.headers.get("x-github-event", "")
@@ -637,10 +684,24 @@ async def github_webhook(request: Request):
     if action not in ACTIONS_TO_HANDLE:
         return {"ok": True, "ignored_action": action}
 
-    score, counts, scan_id = _process_pr(payload)
-    return {
-        "ok": True,
-        "scan_id": scan_id,
-        "risk_score": score,
-        "counts": counts,
-    }
+    if wait:
+        score, counts, scan_id = _process_pr(payload)
+        return {
+            "ok": True,
+            "scan_id": scan_id,
+            "risk_score": score,
+            "counts": counts,
+        }
+
+    def _run_scan_in_background(p: Dict[str, Any], delivery_id: str) -> None:
+        try:
+            _process_pr(p)
+        except Exception:
+            logger.exception(
+                "github PR scan failed",
+                extra={"event": "github_webhook_error", "delivery_id": delivery_id},
+            )
+
+    # GitHub webhook deliveries time out quickly; acknowledge first, scan in background.
+    background_tasks.add_task(_run_scan_in_background, payload, delivery)
+    return {"ok": True, "accepted": True, "delivery_id": delivery}

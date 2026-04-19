@@ -6,6 +6,7 @@ ORM or SQL driver on the request path; one-off SQLite imports use
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -15,7 +16,6 @@ import re
 import time
 import uuid
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -34,15 +34,14 @@ from scanner import (
     calculate_risk_score,
     detect_language_from_text,
     merge_findings,
-    static_scan,
 )
-from dataflow import scan_dataflow
 from jailbreak_engine import simulate as jailbreak_simulate_structural
 from benchmark import evaluate as run_benchmark
 from score_breakdown import compute_breakdown
 from llm_target import detect_llm_targets
 from dependency_scan import scan_dependencies
 from ai_analyzer import ai_scan
+from scan_pipeline import parallel_core_scan
 from seed_demo import create_demo_risk_graph_pr
 from auth import bootstrap_admin_if_needed
 from auth_router import router as auth_router
@@ -91,11 +90,25 @@ configure_logging(settings.LOG_LEVEL)
 logger = logging.getLogger("promptshield.api")
 
 
+async def _background_vector_seed() -> None:
+    """Embed prompts.json into Atlas without blocking HTTP (can take minutes with remote APIs)."""
+    try:
+        await asyncio.to_thread(vector_seed_corpus)
+    except Exception as e:
+        logger.warning(
+            "vector corpus seed skipped: %s",
+            e,
+            extra={"event": "vector_seed_skipped"},
+            exc_info=True,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         mongo_init_collections()
-        vector_seed_corpus()
+        # Must not block startup: embed_many(prompts.json) + Voyage/local model load can exceed client timeouts.
+        asyncio.create_task(_background_vector_seed())
         try:
             from model_registry import ensure_default_models
 
@@ -142,13 +155,7 @@ def _scan_job_handler(payload: dict) -> dict:
     """Synchronous scan handler for the async job queue."""
     text = payload.get("text", "")
     detected_language = detect_language_from_text(text)
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        sf = pool.submit(static_scan, text, detected_language)
-        af = pool.submit(ai_scan, text)
-        df = pool.submit(scan_dataflow, text)
-        static_results = sf.result()
-        ai_results = af.result()
-        dataflow_results = df.result()
+    static_results, ai_results, dataflow_results = parallel_core_scan(text, detected_language)
     merged = merge_findings(static_results + dataflow_results, ai_results)
     score = calculate_risk_score(merged)
     breakdown = compute_breakdown(
@@ -799,13 +806,8 @@ def run_scan(req: ScanRequest, request: Request):
     detected_language = detect_language_from_text(text)
     with tracer.span("scan_pipeline") as span:
         span.set_attribute("language", detected_language)
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            static_future = pool.submit(static_scan, text, detected_language)
-            ai_future = pool.submit(ai_scan, text)
-            dataflow_future = pool.submit(scan_dataflow, text)
-            static_results = static_future.result()
-            ai_results = ai_future.result()
-            dataflow_results = dataflow_future.result()
+        span.set_attribute("scan_mode", settings.PROMPTSHIELD_SCAN_MODE)
+        static_results, ai_results, dataflow_results = parallel_core_scan(text, detected_language)
         merged = merge_findings(static_results + dataflow_results, ai_results)
         score = calculate_risk_score(merged)
         targets = detect_llm_targets(text)
@@ -822,29 +824,30 @@ def run_scan(req: ScanRequest, request: Request):
     metrics.observe("scan_duration_ms", duration_ms, labels={"source": "web"})
     slo_tracker.record_request(scan_latency_ms=duration_ms)
 
-    # ── Atlas Vector Search enrichment ──────────────────────────────────
+    # ── Atlas Vector Search enrichment (skipped in fast scan mode) ───────
     semantic_matches: list[dict] = []
     scan_embedding: Optional[list] = None
-    try:
-        scan_embedding = vector_embed(text, input_type="document")
-        raw_matches = vector_find_similar(text, k=5)
-        semantic_matches = [
-            {
-                "text": m["text"],
-                "category": m.get("category"),
-                "expected": m.get("expected"),
-                "score": float(m.get("score", 0)),
-            }
-            for m in raw_matches
-        ]
-        sem_finding = vector_to_finding(raw_matches)
-        if sem_finding and not any(
-            f.get("type") == "SEMANTIC_JAILBREAK_MATCH" for f in merged
-        ):
-            merged.append(sem_finding)
-            score = calculate_risk_score(merged)
-    except Exception as e:
-        logger.warning("vector enrichment skipped: %s", e, extra={"event": "vector_skip"})
+    if settings.PROMPTSHIELD_SCAN_MODE != "fast":
+        try:
+            scan_embedding = vector_embed(text, input_type="document")
+            raw_matches = vector_find_similar(text, k=5)
+            semantic_matches = [
+                {
+                    "text": m["text"],
+                    "category": m.get("category"),
+                    "expected": m.get("expected"),
+                    "score": float(m.get("score", 0)),
+                }
+                for m in raw_matches
+            ]
+            sem_finding = vector_to_finding(raw_matches)
+            if sem_finding and not any(
+                f.get("type") == "SEMANTIC_JAILBREAK_MATCH" for f in merged
+            ):
+                merged.append(sem_finding)
+                score = calculate_risk_score(merged)
+        except Exception as e:
+            logger.warning("vector enrichment skipped: %s", e, extra={"event": "vector_skip"})
 
     persisted_text = redact(text) if settings.REDACT_PERSISTED_INPUT else text
     # Try to persist, but if Mongo is unavailable, return stateless response.
@@ -906,7 +909,7 @@ def run_scan(req: ScanRequest, request: Request):
         return ScanReport(
             id=str(uuid4()),
             created_at=now,
-            input_text=text,
+            input_text=persisted_text,
             risk_score=score,
             findings=merged,
             static_count=len(static_results),
@@ -1417,7 +1420,7 @@ def compliance_report_pdf():
 @app.post("/api/findings/suggest-fix", response_model=SuggestFixResponse)
 def suggest_fix(req: SuggestFixRequest):
     f = req.finding
-    if settings.GOOGLE_CLOUD_PROJECT:
+    if settings.GOOGLE_CLOUD_PROJECT and settings.PROMPTSHIELD_SCAN_MODE != "fast":
         prompt = (
             "Provide a secure refactor suggestion for this finding. Return plain text only with:\n"
             "1) Why unsafe\n2) Safer code sketch\n3) One-line validation step\n\n"
@@ -1673,6 +1676,9 @@ def health():
             "model": settings.GEMINI_MODEL,
             "configured": bool(settings.GOOGLE_CLOUD_PROJECT),
             "vertex_location": settings.GOOGLE_CLOUD_LOCATION,
+            "scan_mode": settings.PROMPTSHIELD_SCAN_MODE,
+            "gemini_on_scan_path": bool(settings.GOOGLE_CLOUD_PROJECT)
+            and settings.PROMPTSHIELD_SCAN_MODE != "fast",
         },
         "agent_security": True,
     }

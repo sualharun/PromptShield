@@ -279,7 +279,9 @@ export default function DashboardPage({ onSelectScan }) {
           </h1>
           <p className="mt-1 max-w-xl text-[13px] text-carbon-text-tertiary dark:text-ibm-gray-40">
             Every pull request reviewed by the PromptShield bot — scored,
-            gated, and tracked across repos.
+            gated, and tracked across repos. Rows come from PR scans (GitHub
+            webhook or <span className="font-medium">Sync PRs</span>); branch
+            pushes without an open pull request are not listed.
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -12,7 +12,14 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react'
-import { fetchWithTimeout } from '../lib/fetchWithTimeout.js'
+import {
+  asNetworkErrorMessage,
+  fetchWithTimeout,
+} from '../lib/fetchWithTimeout.js'
+
+/** Agent / Mongo calls can exceed the default 30s (cold Atlas, embeddings). */
+const AGENT_READ_TIMEOUT_MS = 90_000
+const EXPLOIT_SEED_TIMEOUT_MS = 180_000
 
 /**
  * AgentToolsPage — the "MongoDB Atlas for agent security" page.
@@ -30,7 +37,7 @@ import { fetchWithTimeout } from '../lib/fetchWithTimeout.js'
 export default function AgentToolsPage() {
   // ── Tool registry (default + filters) ──────────────────────────────────
   const [tools, setTools] = useState([])
-  const [toolsLoading, setToolsLoading] = useState(false)
+  const [toolsLoading, setToolsLoading] = useState(true)
   const [toolsError, setToolsError] = useState(null)
   const [filters, setFilters] = useState({
     framework: '',
@@ -77,12 +84,23 @@ export default function AgentToolsPage() {
       if (filters.risk_level) params.set('risk_level', filters.risk_level)
       if (filters.capability) params.set('capability', filters.capability)
       params.set('limit', '100')
-      const r = await fetchWithTimeout(`/api/v2/agent-tools?${params}`)
+      const r = await fetchWithTimeout(
+        `/api/v2/agent-tools?${params}`,
+        {},
+        AGENT_READ_TIMEOUT_MS
+      )
       if (!r.ok) throw new Error(`tool registry unavailable (${r.status})`)
       const data = await r.json()
       setTools(data.tools || [])
+      if (data.degraded) {
+        setToolsError(
+          'MongoDB unavailable — the registry cannot be loaded. Check MONGODB_URI / Atlas access, or remove MONGODB_URI to use the built-in local mock.'
+        )
+      }
     } catch (e) {
-      setToolsError(String(e.message || e))
+      setToolsError(
+        asNetworkErrorMessage(e, String(e.message || e))
+      )
       setTools([])
     } finally {
       setToolsLoading(false)
@@ -93,7 +111,9 @@ export default function AgentToolsPage() {
     setAlertsLoading(true)
     try {
       const r = await fetchWithTimeout(
-        '/api/v2/agent-alerts?acknowledged=false&limit=20'
+        '/api/v2/agent-alerts?acknowledged=false&limit=20',
+        {},
+        AGENT_READ_TIMEOUT_MS
       )
       if (!r.ok) throw new Error(`alerts unavailable (${r.status})`)
       const data = await r.json()
@@ -111,7 +131,9 @@ export default function AgentToolsPage() {
     setTimelineLoading(true)
     try {
       const r = await fetchWithTimeout(
-        '/api/v2/agent-surface-timeline?days=30'
+        '/api/v2/agent-surface-timeline?days=30',
+        {},
+        AGENT_READ_TIMEOUT_MS
       )
       if (!r.ok) throw new Error('timeline unavailable')
       const data = await r.json()
@@ -129,10 +151,18 @@ export default function AgentToolsPage() {
   const loadRollups = useCallback(async () => {
     try {
       const [c, f] = await Promise.all([
-        fetchWithTimeout('/api/v2/agent-tools/aggregations/capabilities')
+        fetchWithTimeout(
+          '/api/v2/agent-tools/aggregations/capabilities',
+          {},
+          AGENT_READ_TIMEOUT_MS
+        )
           .then((r) => (r.ok ? r.json() : { capabilities: [] }))
           .catch(() => ({ capabilities: [] })),
-        fetchWithTimeout('/api/v2/agent-tools/aggregations/frameworks')
+        fetchWithTimeout(
+          '/api/v2/agent-tools/aggregations/frameworks',
+          {},
+          AGENT_READ_TIMEOUT_MS
+        )
           .then((r) => (r.ok ? r.json() : { frameworks: [] }))
           .catch(() => ({ frameworks: [] })),
       ])
@@ -165,11 +195,15 @@ export default function AgentToolsPage() {
     setSearchLoading(true)
     setSearchError(null)
     try {
-      const r = await fetchWithTimeout('/api/v2/agent-tools/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q, k: 25, vector_weight: 1.0, text_weight: 1.0 }),
-      })
+      const r = await fetchWithTimeout(
+        '/api/v2/agent-tools/search',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ q, k: 25, vector_weight: 1.0, text_weight: 1.0 }),
+        },
+        AGENT_READ_TIMEOUT_MS
+      )
       if (!r.ok) throw new Error(`hybrid search failed (${r.status})`)
       const data = await r.json()
       setResults(data.results || [])
@@ -207,7 +241,8 @@ export default function AgentToolsPage() {
             evidence: (tool.evidence_samples || [])[0] || null,
             k: 5,
           }),
-        }
+        },
+        AGENT_READ_TIMEOUT_MS
       )
       if (!r.ok) throw new Error(`vector search failed (${r.status})`)
       const data = await r.json()
@@ -242,7 +277,8 @@ export default function AgentToolsPage() {
     try {
       const r = await fetchWithTimeout(
         '/api/v2/agent-tools/exploit-corpus/seed',
-        { method: 'POST' }
+        { method: 'POST' },
+        EXPLOIT_SEED_TIMEOUT_MS
       )
       if (!r.ok) throw new Error(`seed failed (${r.status})`)
       const data = await r.json()
@@ -252,7 +288,7 @@ export default function AgentToolsPage() {
         }.`
       )
     } catch (e) {
-      setSeedMsg(`Seed failed (${String(e.message || e)})`)
+      setSeedMsg(`Seed failed (${asNetworkErrorMessage(e, String(e.message || e))})`)
     } finally {
       setSeedRunning(false)
     }
@@ -431,7 +467,13 @@ export default function AgentToolsPage() {
             {toolsLoading && !showingSearch && <PanelMsg text="Loading tool registry…" />}
             {toolsError && !showingSearch && (
               <PanelMsg
-                text={`Tool registry unavailable (${toolsError}). Run a scan with agent code first; tools are derived from scan findings.`}
+                text={
+                  toolsError.startsWith('MongoDB unavailable') ||
+                  toolsError.startsWith('Request timed out') ||
+                  toolsError.includes('Failed to fetch')
+                    ? toolsError
+                    : `Tool registry unavailable (${toolsError}). Run a scan with agent code first; tools are derived from scan findings.`
+                }
               />
             )}
             {!toolsLoading && !toolsError && display.length === 0 && (

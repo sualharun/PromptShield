@@ -164,6 +164,8 @@ def ai_scan(text: str) -> List[Dict]:
     Returns a list of normalized findings. Returns [] on any failure path so
     the rest of the scan pipeline keeps working in degraded mode.
     """
+    if settings.PROMPTSHIELD_SCAN_MODE == "fast":
+        return []
     client = _gemini_client()
     if client is None:
         logger.info(

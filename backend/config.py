@@ -11,6 +11,12 @@ load_dotenv(_HERE / ".env", override=False)
 load_dotenv(_HERE.parent / ".env", override=False)
 
 
+def _normalize_scan_mode(raw: str | None) -> str:
+    """fast = static + dataflow only; full = add Gemini + vector enrichment path."""
+    v = (raw or "full").strip().lower()
+    return v if v in ("fast", "full") else "full"
+
+
 def _bool(name: str, default: bool) -> bool:
     val = os.environ.get(name)
     if val is None:
@@ -57,6 +63,8 @@ class Settings:
     GOOGLE_CLOUD_LOCATION: str = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
     GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     AI_PROVIDER: str = "gemini"
+    # fast → core detectors only (no Vertex call, no scan vector enrich). full → layered pipeline.
+    PROMPTSHIELD_SCAN_MODE: str = _normalize_scan_mode(os.environ.get("PROMPTSHIELD_SCAN_MODE"))
     SCAN_RATE_LIMIT: int = int(os.environ.get("SCAN_RATE_LIMIT", "10"))
     SCAN_RATE_WINDOW: int = int(os.environ.get("SCAN_RATE_WINDOW", "60"))
     MAX_INPUT_CHARS: int = int(os.environ.get("MAX_INPUT_CHARS", "50000"))
