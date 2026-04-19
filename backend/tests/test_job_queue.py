@@ -1,19 +1,14 @@
 """Tests for the async job queue — run via asyncio.run()."""
 
-import os
 import asyncio
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///")
-
 import pytest
-from database import Base, engine, SessionLocal, safe_create_all
-from models import ScanJob
 
 
 @pytest.fixture(autouse=True)
 def _setup():
-    Base.metadata.drop_all(bind=engine)
-    safe_create_all()
+    from mongo import C, col
+    col(C.SCAN_JOBS).delete_many({})
 
 
 def _fresh_queue():
@@ -31,7 +26,7 @@ def test_enqueue_and_complete():
         status = q.get_status(job_id)
         assert status is not None
         assert status["status"] == "completed"
-        assert status["result_scan_id"] == 42
+        assert status["result_scan_id"] == "42"
 
     asyncio.run(_run())
 

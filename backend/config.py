@@ -40,6 +40,7 @@ def _load_pem(env_value: str | None, env_path_value: str | None) -> str | None:
 
 
 class Settings:
+    # Used only by `scripts/migrate_sqlite_to_mongo.py` (points at a legacy .db file).
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///./promptshield.db")
     ALLOWED_ORIGINS: list[str] = [
         o.strip()
@@ -82,6 +83,36 @@ class Settings:
     # Notifications (opt-in: webhook URLs blank means notifications are skipped)
     SLACK_WEBHOOK_URL: str | None = os.environ.get("SLACK_WEBHOOK_URL")
     TEAMS_WEBHOOK_URL: str | None = os.environ.get("TEAMS_WEBHOOK_URL")
+
+    # ── MongoDB Atlas ───────────────────────────────────────────────────────
+    # Empty MONGODB_URI falls back to mongomock (tests) or must be set in production.
+    MONGODB_URI: str | None = os.environ.get("MONGODB_URI") or None
+    MONGODB_DB: str = os.environ.get("MONGODB_DB", "promptshield")
+    # Telemetry only (historical: which backing store the API used).
+    PRIMARY_STORE: str = os.environ.get("PRIMARY_STORE", "mongo").strip().lower()
+
+    # ── Embeddings / Vector Search ─────────────────────────────────────────
+    # "local" → sentence-transformers (no key, runs on CPU)
+    # "voyage" → MongoDB-hosted Voyage AI Embedding API (needs VOYAGE_API_KEY)
+    EMBEDDING_PROVIDER: str = os.environ.get("EMBEDDING_PROVIDER", "voyage").strip().lower()
+    EMBEDDING_MODEL: str = os.environ.get(
+        "EMBEDDING_MODEL",
+        "voyage-3-large" if os.environ.get("EMBEDDING_PROVIDER", "voyage") == "voyage"
+        else "all-MiniLM-L6-v2",
+    )
+    EMBEDDING_DIMS: int = int(
+        os.environ.get(
+            "EMBEDDING_DIMS",
+            "1024" if os.environ.get("EMBEDDING_PROVIDER", "voyage") == "voyage" else "384",
+        )
+    )
+    VOYAGE_API_KEY: str | None = os.environ.get("VOYAGE_API_KEY") or None
+
+    # TLS to Atlas — macOS / some Python builds lack a proper default CA store.
+    # Leave unset to use certifi's bundle (recommended). Override with a PEM path if needed.
+    MONGODB_TLS_CA_FILE: str | None = os.environ.get("MONGODB_TLS_CA_FILE") or None
+    # Last-resort dev only — insecure; never use in production
+    MONGODB_TLS_ALLOW_INVALID: bool = _bool("MONGODB_TLS_ALLOW_INVALID", False)
 
 
 settings = Settings()

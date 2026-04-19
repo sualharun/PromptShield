@@ -8,7 +8,7 @@ import CompliancePage from './pages/CompliancePage.jsx'
 import PMPage from './pages/PMPage.jsx'
 import PolicyPage from './pages/PolicyPage.jsx'
 import EnterprisePage from './pages/EnterprisePage.jsx'
-import AgentHandoffPage from './pages/AgentHandoffPage.jsx'
+import AtlasInsightsPage from './pages/AtlasInsightsPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
 import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
@@ -23,7 +23,7 @@ const WORKSPACE_NAV = [
   { id: 'pm', label: 'PM' },
   { id: 'policy', label: 'Policy' },
   { id: 'enterprise', label: 'Enterprise' },
-  { id: 'agent', label: 'Agent Handoff' },
+  { id: 'atlas', label: '◆ Atlas' },
   { id: 'scan', label: 'Scan' },
 ]
 
@@ -266,8 +266,7 @@ refreshHistory()
           {view === 'pm' && <PMPage onSignIn={goLogin} />}
           {view === 'policy' && <PolicyPage />}
           {view === 'enterprise' && <EnterprisePage />}
-
-          {view === 'agent' && <AgentHandoffPage />}
+          {view === 'atlas' && <AtlasInsightsPage />}
           {view === 'login' && (
             <LoginPage onLoggedIn={() => setView('pm')} />
           )}

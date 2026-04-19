@@ -1,113 +1,128 @@
 """Enhanced policy engine: versioned rules, simulation, and explanation trails.
 
-Wraps the existing policy.py with versioning (stored in policy_versions table)
-and adds a rule simulator that explains why each rule fired.
+v0.4: Mongo-backed. Versions are stored in `policy_versions`. The legacy `db`
+parameter is accepted (and ignored) so existing call sites don't have to be
+updated all at once.
 """
+from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy.orm import Session
+import repositories as repos
+from mongo import C, col
+from policy import PolicyError, apply_policy, parse_policy  # noqa: F401  (re-exported)
 
-from models import PolicyVersion
-from policy import PolicyError, apply_policy, parse_policy
+
+def _next_version(repo_full_name: Optional[str], org_id: Optional[str]) -> int:
+    latest = (
+        col(C.POLICY_VERSIONS)
+        .find({"repo_full_name": repo_full_name, "org_id": org_id})
+        .sort("version", -1)
+        .limit(1)
+    )
+    doc = next(iter(latest), None)
+    return int(doc.get("version", 0)) + 1 if doc else 1
+
+
+def _deactivate_active(repo_full_name: Optional[str], org_id: Optional[str]) -> None:
+    col(C.POLICY_VERSIONS).update_many(
+        {"repo_full_name": repo_full_name, "org_id": org_id, "is_active": True},
+        {"$set": {"is_active": False}},
+    )
 
 
 def save_policy_version(
-    db: Session,
+    db: Any,  # legacy compatibility — ignored
     yaml_text: str,
     repo_full_name: Optional[str] = None,
-    org_id: Optional[int] = None,
-    author_id: Optional[int] = None,
+    org_id: Optional[Any] = None,
+    author_id: Optional[Any] = None,
     change_summary: Optional[str] = None,
 ) -> Dict:
     """Validate and save a new policy version. Deactivates the previous active version."""
     policy, warnings = parse_policy(yaml_text)
+    org_id_s = str(org_id) if org_id is not None else None
 
-    current = (
-        db.query(PolicyVersion)
-        .filter(
-            PolicyVersion.repo_full_name == repo_full_name,
-            PolicyVersion.org_id == org_id,
-            PolicyVersion.is_active == True,
-        )
-        .first()
-    )
-    next_version = (current.version + 1) if current else 1
-    if current:
-        current.is_active = False
+    _deactivate_active(repo_full_name, org_id_s)
 
-    pv = PolicyVersion(
-        org_id=org_id,
-        repo_full_name=repo_full_name,
-        version=next_version,
-        yaml_text=yaml_text,
-        author_id=author_id,
-        change_summary=change_summary,
-    )
-    db.add(pv)
-    db.commit()
-    db.refresh(pv)
+    next_version = _next_version(repo_full_name, org_id_s)
+    doc = {
+        "org_id": org_id_s,
+        "repo_full_name": repo_full_name,
+        "version": next_version,
+        "yaml_text": yaml_text,
+        "author_id": str(author_id) if author_id is not None else None,
+        "change_summary": change_summary,
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc),
+    }
+    res = col(C.POLICY_VERSIONS).insert_one(doc)
+    doc["_id"] = res.inserted_id
 
     return {
-        "id": pv.id,
-        "version": pv.version,
-        "created_at": pv.created_at.isoformat(),
+        "id": str(doc["_id"]),
+        "version": next_version,
+        "created_at": doc["created_at"].isoformat(),
         "warnings": warnings,
         "policy": policy,
     }
 
 
 def get_active_policy(
-    db: Session,
+    db: Any,  # legacy compatibility — ignored
     repo_full_name: Optional[str] = None,
-    org_id: Optional[int] = None,
+    org_id: Optional[Any] = None,
 ) -> Optional[Dict]:
     """Fetch the current active policy for a repo/org."""
-    pv = (
-        db.query(PolicyVersion)
-        .filter(
-            PolicyVersion.repo_full_name == repo_full_name,
-            PolicyVersion.org_id == org_id,
-            PolicyVersion.is_active == True,
-        )
-        .first()
+    org_id_s = str(org_id) if org_id is not None else None
+    pv = col(C.POLICY_VERSIONS).find_one(
+        {"repo_full_name": repo_full_name, "org_id": org_id_s, "is_active": True}
     )
     if not pv:
         return None
-    policy, _ = parse_policy(pv.yaml_text)
+    policy, _ = parse_policy(pv["yaml_text"])
+    created = pv.get("created_at") or datetime.now(timezone.utc)
+    if hasattr(created, "isoformat"):
+        created_iso = created.isoformat()
+    else:
+        created_iso = str(created)
     return {
-        "id": pv.id,
-        "version": pv.version,
-        "yaml_text": pv.yaml_text,
+        "id": str(pv["_id"]),
+        "version": int(pv.get("version") or 1),
+        "yaml_text": pv["yaml_text"],
         "policy": policy,
-        "created_at": pv.created_at.isoformat(),
+        "created_at": created_iso,
     }
 
 
 def list_policy_versions(
-    db: Session,
+    db: Any,  # legacy compatibility — ignored
     repo_full_name: Optional[str] = None,
-    org_id: Optional[int] = None,
+    org_id: Optional[Any] = None,
     limit: int = 20,
 ) -> List[Dict]:
     """Return policy version history."""
-    q = db.query(PolicyVersion).filter(
-        PolicyVersion.repo_full_name == repo_full_name,
-        PolicyVersion.org_id == org_id,
-    ).order_by(PolicyVersion.version.desc()).limit(limit)
-
-    return [
-        {
-            "id": pv.id,
-            "version": pv.version,
-            "is_active": pv.is_active,
-            "change_summary": pv.change_summary,
-            "created_at": pv.created_at.isoformat(),
-        }
-        for pv in q.all()
-    ]
+    org_id_s = str(org_id) if org_id is not None else None
+    cursor = (
+        col(C.POLICY_VERSIONS)
+        .find({"repo_full_name": repo_full_name, "org_id": org_id_s})
+        .sort("version", -1)
+        .limit(limit)
+    )
+    out: list[dict] = []
+    for pv in cursor:
+        created = pv.get("created_at") or datetime.now(timezone.utc)
+        out.append(
+            {
+                "id": str(pv["_id"]),
+                "version": int(pv.get("version") or 1),
+                "is_active": bool(pv.get("is_active", False)),
+                "change_summary": pv.get("change_summary"),
+                "created_at": created.isoformat() if hasattr(created, "isoformat") else str(created),
+            }
+        )
+    return out
 
 
 def simulate_policy(

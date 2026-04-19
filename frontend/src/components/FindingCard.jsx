@@ -75,8 +75,39 @@ export default function FindingCard({
                 SUPPRESSED
               </span>
             )}
+            {finding.detector === 'atlas_vector_search' && finding.match && (
+              <span
+                title={`Atlas Vector Search matched a known ${finding.match.category || 'attack'} prompt at ${Math.round((finding.match.score || 0) * 100)}% similarity.`}
+                className="inline-flex items-center gap-1 border border-[#13aa52] bg-[#13aa52]/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-[#13aa52]"
+              >
+                <span aria-hidden>◆</span>
+                Atlas · {Math.round((finding.match.score || 0) * 100)}%
+              </span>
+            )}
           </div>
         </div>
+
+        {finding.detector === 'atlas_vector_search' && finding.match?.text && (
+          <div className="mt-3 border-l-2 border-[#13aa52] bg-[#f3fbf6] px-3 py-2 text-[12px] leading-relaxed text-carbon-text-secondary dark:bg-[#0d1f15] dark:text-ibm-gray-30">
+            <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-wider text-[#13aa52]">
+              <span>
+                ◆ Matched corpus prompt
+                {finding.match.category ? ` · ${finding.match.category}` : ''}
+              </span>
+              <span>
+                cosine {Math.round((finding.match.score || 0) * 100)}%
+              </span>
+            </div>
+            <div className="font-mono text-[11px] italic text-carbon-text dark:text-ibm-gray-10">
+              "{finding.match.text}"
+            </div>
+            {finding.match.expected && (
+              <div className="mt-1 text-[10px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                Expected outcome: <span className="font-mono">{finding.match.expected}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         <h3 className="mt-3 text-[15px] font-semibold leading-snug text-carbon-text dark:text-ibm-gray-10">
           {finding.title}

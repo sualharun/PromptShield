@@ -1,16 +1,15 @@
-"""Finding-suppression helpers.
+"""Finding-suppression helpers — Mongo-backed (v0.4 port).
 
-Signature is a stable, short hash of (type, title, evidence-prefix) so the same
-finding recurring across scans can be matched. Repo scoping keeps suppressions
-from leaking across unrelated projects.
+Signature is a stable, short hash of (type, title, evidence-prefix) so the
+same finding recurring across scans can be matched. Repo scoping keeps
+suppressions from leaking across unrelated projects.
 """
+from __future__ import annotations
 
 import hashlib
 from typing import Dict, Iterable, List, Optional, Set
 
-from sqlalchemy.orm import Session
-
-from database import FindingSuppression
+import repositories as repos
 
 
 def finding_signature(finding: Dict) -> str:
@@ -24,17 +23,14 @@ def finding_signature(finding: Dict) -> str:
 
 
 def suppressed_signatures(
-    db: Session, repo_full_name: Optional[str]
+    _db_unused=None,
+    repo_full_name: Optional[str] = None,
 ) -> Set[str]:
-    q = db.query(FindingSuppression.signature)
-    if repo_full_name:
-        q = q.filter(
-            (FindingSuppression.repo_full_name == repo_full_name)
-            | (FindingSuppression.repo_full_name.is_(None))
-        )
-    else:
-        q = q.filter(FindingSuppression.repo_full_name.is_(None))
-    return {row[0] for row in q.all()}
+    """Set of suppressed signatures applicable to `repo_full_name`.
+
+    First positional arg is unused (legacy `db` slot). Callers may omit it.
+    """
+    return repos.suppressed_signatures_set(repo_full_name)
 
 
 def annotate(

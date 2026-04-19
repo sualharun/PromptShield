@@ -16,13 +16,14 @@ import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
 from ai_analyzer import ai_scan
 from config import settings
-from database import Scan, SessionLocal
+import repositories as repos
 from diff_utils import filter_findings_to_lines, parse_added_lines
 from github_app import GitHubClient, get_installation_token, verify_webhook_signature
 from scanner import (
@@ -37,7 +38,7 @@ from dataflow import scan_dataflow
 from dependency_scan import scan_dependencies
 from notifications import notify_gate_failure
 from policy import PolicyError, apply_policy, parse_policy, render_policy_summary
-from database import AuditLog
+from mongo import C, col
 
 logger = logging.getLogger("promptshield.webhook")
 
@@ -263,53 +264,52 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
             ai_count = sum(1 for x in all_findings if x.get("source") == "ai")
             breakdown = compute_breakdown(all_findings, static_count, ai_count)
 
-            db = SessionLocal()
-            try:
-                scan = Scan(
-                    input_text=(
+            llm_targets_list = sorted(target_set) if target_set else []
+
+            scan_doc = repos.insert_scan(
+                {
+                    "input_text": (
                         f"PR #{number} in {full} · {files_scanned} file(s) · "
                         f"{head_sha[:7]}"
                     ),
-                    risk_score=score,
-                    findings_json=json.dumps(all_findings),
-                    static_count=static_count,
-                    ai_count=ai_count,
-                    total_count=len(all_findings),
-                    source="github",
-                    repo_full_name=full,
-                    pr_number=number,
-                    commit_sha=head_sha,
-                    pr_title=pr_title,
-                    pr_url=pr_url,
-                    score_breakdown_json=json.dumps(breakdown),
-                    author_login=author_login,
-                    llm_targets=",".join(sorted(target_set)) if target_set else None,
-                )
-                db.add(scan)
-                db.commit()
-                db.refresh(scan)
-                scan_id = scan.id
+                    "risk_score": score,
+                    "findings": all_findings,
+                    "counts": {
+                        "static": static_count,
+                        "ai": ai_count,
+                        "total": len(all_findings),
+                    },
+                    "source": "github",
+                    "github": {
+                        "repo_full_name": full,
+                        "pr_number": number,
+                        "commit_sha": head_sha,
+                        "pr_title": pr_title,
+                        "pr_url": pr_url,
+                        "author_login": author_login,
+                    },
+                    "score_breakdown": breakdown,
+                    "llm_targets": llm_targets_list,
+                }
+            )
+            scan_id = str(scan_doc["_id"])
 
-                db.add(
-                    AuditLog(
-                        actor="github-app",
-                        action="PR_SCAN_COMPLETED",
-                        source="github",
-                        repo_full_name=full,
-                        pr_number=number,
-                        scan_id=scan.id,
-                        details_json=json.dumps(
-                            {
-                                "risk_score": score,
-                                "files_scanned": files_scanned,
-                                "findings": len(all_findings),
-                            }
-                        ),
-                    )
-                )
-                db.commit()
-            finally:
-                db.close()
+            col(C.AUDIT_LOGS).insert_one(
+                {
+                    "actor": "github-app",
+                    "action": "PR_SCAN_COMPLETED",
+                    "source": "github",
+                    "repo_full_name": full,
+                    "pr_number": number,
+                    "scan_id": scan_id,
+                    "details": {
+                        "risk_score": score,
+                        "files_scanned": files_scanned,
+                        "findings": len(all_findings),
+                    },
+                    "created_at": datetime.now(timezone.utc),
+                }
+            )
 
             comments = [
                 {

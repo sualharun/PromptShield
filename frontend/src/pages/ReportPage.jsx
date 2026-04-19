@@ -7,6 +7,7 @@ import FindingsToolbar from '../components/FindingsToolbar.jsx'
 import ScoreBreakdown from '../components/ScoreBreakdown.jsx'
 import DependencyGraph from '../components/DependencyGraph.jsx'
 import AttackerSimulationPanel from '../components/AttackerSimulationPanel.jsx'
+import SimilarScansPanel from '../components/SimilarScansPanel.jsx'
 import PanelErrorBoundary from '../components/PanelErrorBoundary.jsx'
 import { CategoryRadar, SeverityBar, TrendLine } from '../components/Charts.jsx'
 
@@ -241,6 +242,13 @@ export default function ReportPage({ report, history = [], onNewScan }) {
           >
             Attacker mode
           </button>
+          <button
+            className={`border-l border-carbon-border px-3 py-2 transition-colors dark:border-ibm-gray-80 ${activePanel === 'similar' ? 'bg-carbon-layer text-carbon-text dark:bg-ibm-gray-100 dark:text-ibm-gray-10' : 'text-carbon-text-tertiary dark:text-ibm-gray-40'}`}
+            onClick={() => setActivePanel('similar')}
+            title="Atlas Vector Search"
+          >
+            <span className="text-[#13aa52]">◆</span> Similar past scans
+          </button>
         </div>
       </section>
 
@@ -327,6 +335,22 @@ export default function ReportPage({ report, history = [], onNewScan }) {
             <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">Proactive exploit-path analysis from this report</span>
           </div>
           <AttackerSimulationPanel scanId={report.id} />
+        </section>
+      )}
+
+      {activePanel === 'similar' && (
+        <section className="mt-6">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+              Semantically similar prompts
+            </h2>
+            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+              MongoDB Atlas Vector Search · top-5 cosine
+            </span>
+          </div>
+          <PanelErrorBoundary>
+            <SimilarScansPanel scanId={report.id} />
+          </PanelErrorBoundary>
         </section>
       )}
 

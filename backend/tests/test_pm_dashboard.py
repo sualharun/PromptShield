@@ -1,111 +1,64 @@
-import json
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
 import main
-from auth import SESSION_COOKIE_NAME, hash_password
-from database import Scan, SessionLocal, User
+import repositories as repos
+from auth import hash_password
+from mongo import C, col
 
 
 client = TestClient(main.app)
 
 
 def _reset():
-    db = SessionLocal()
-    try:
-        db.query(Scan).delete()
-        db.query(User).delete()
-        db.commit()
-    finally:
-        db.close()
+    col(C.USERS).delete_many({})
+    col(C.SCANS).delete_many({})
 
 
 def _seed_user(email: str, role: str = "pm") -> None:
-    db = SessionLocal()
-    try:
-        db.add(
-            User(
-                email=email,
-                name="Test",
-                password_hash=hash_password("pw"),
-                role=role,
-            )
-        )
-        db.commit()
-    finally:
-        db.close()
+    repos.insert_user(
+        {
+            "email": email,
+            "name": "Test",
+            "password_hash": hash_password("pw"),
+            "role": role,
+        }
+    )
+
+
+def _scan_doc(*, created_at, risk_score, repo, pr_number, commit_sha, author):
+    return {
+        "created_at": created_at,
+        "input_text": "x",
+        "risk_score": float(risk_score),
+        "findings": [],
+        "counts": {"static": 0, "ai": 0, "total": 0},
+        "source": "github",
+        "github": {
+            "repo_full_name": repo,
+            "pr_number": pr_number,
+            "pr_title": None,
+            "pr_url": None,
+            "commit_sha": commit_sha,
+            "author_login": author,
+        },
+        "llm_targets": [],
+    }
 
 
 def _seed_scans():
-    db = SessionLocal()
-    try:
-        t0 = datetime(2026, 1, 1, 12, 0, 0)
-        rows = [
-            # alice: one passing, one failing
-            Scan(
-                created_at=t0,
-                input_text="x",
-                risk_score=30,
-                findings_json="[]",
-                static_count=0,
-                ai_count=0,
-                total_count=0,
-                source="github",
-                repo_full_name="ibm/promptshield",
-                pr_number=1,
-                commit_sha="aaa",
-                author_login="alice",
-            ),
-            # bob: failing then passing on same PR -> remediation delta populated
-            Scan(
-                created_at=t0 + timedelta(minutes=5),
-                input_text="x",
-                risk_score=85,
-                findings_json="[]",
-                static_count=0,
-                ai_count=0,
-                total_count=0,
-                source="github",
-                repo_full_name="ibm/promptshield",
-                pr_number=2,
-                commit_sha="bbb",
-                author_login="bob",
-            ),
-            Scan(
-                created_at=t0 + timedelta(minutes=65),
-                input_text="x",
-                risk_score=40,
-                findings_json="[]",
-                static_count=0,
-                ai_count=0,
-                total_count=0,
-                source="github",
-                repo_full_name="ibm/promptshield",
-                pr_number=2,
-                commit_sha="bbb2",
-                author_login="bob",
-            ),
-            # carol: failing, never remediated
-            Scan(
-                created_at=t0 + timedelta(minutes=30),
-                input_text="x",
-                risk_score=90,
-                findings_json="[]",
-                static_count=0,
-                ai_count=0,
-                total_count=0,
-                source="github",
-                repo_full_name="ibm/other",
-                pr_number=7,
-                commit_sha="ccc",
-                author_login="carol",
-            ),
-        ]
-        db.add_all(rows)
-        db.commit()
-    finally:
-        db.close()
+    t0 = datetime(2026, 1, 1, 12, 0, 0)
+    docs = [
+        # alice: one passing, one failing
+        _scan_doc(created_at=t0, risk_score=30, repo="ibm/promptshield", pr_number=1, commit_sha="aaa", author="alice"),
+        # bob: failing then passing on same PR -> remediation delta populated
+        _scan_doc(created_at=t0 + timedelta(minutes=5), risk_score=85, repo="ibm/promptshield", pr_number=2, commit_sha="bbb", author="bob"),
+        _scan_doc(created_at=t0 + timedelta(minutes=65), risk_score=40, repo="ibm/promptshield", pr_number=2, commit_sha="bbb2", author="bob"),
+        # carol: failing, never remediated
+        _scan_doc(created_at=t0 + timedelta(minutes=30), risk_score=90, repo="ibm/other", pr_number=7, commit_sha="ccc", author="carol"),
+    ]
+    col(C.SCANS).insert_many(docs)
 
 
 def _login(email: str):
