@@ -1,0 +1,20 @@
+{
+  "name": "agent_tools_vector_idx",
+  "collection": "agent_tools",
+  "type": "vectorSearch",
+  "definition": {
+    "fields": [
+      {
+        "type": "vector",
+        "path": "embedding",
+        "numDimensions": 1024,
+        "similarity": "cosine",
+        "quantization": "scalar"
+      },
+      { "type": "filter", "path": "repo_full_name" },
+      { "type": "filter", "path": "framework" },
+      { "type": "filter", "path": "risk_level" },
+      { "type": "filter", "path": "capabilities" }
+    ]
+  }
+}

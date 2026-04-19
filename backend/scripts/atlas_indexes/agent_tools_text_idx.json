@@ -1,0 +1,38 @@
+{
+  "name": "agent_tools_text_idx",
+  "collection": "agent_tools",
+  "type": "search",
+  "definition": {
+    "mappings": {
+      "dynamic": false,
+      "fields": {
+        "tool_name": [
+          { "type": "string", "analyzer": "lucene.standard" },
+          { "type": "autocomplete", "tokenization": "edgeGram", "minGrams": 2, "maxGrams": 15 },
+          { "type": "token" }
+        ],
+        "framework": { "type": "token" },
+        "risk_level": { "type": "token" },
+        "capabilities": [
+          { "type": "string", "analyzer": "lucene.standard" },
+          { "type": "token" }
+        ],
+        "missing_safeguards": [
+          { "type": "string", "analyzer": "lucene.standard" },
+          { "type": "token" }
+        ],
+        "evidence_samples": [
+          { "type": "string", "analyzer": "lucene.standard" }
+        ],
+        "embedding_text": [
+          { "type": "string", "analyzer": "lucene.standard" }
+        ],
+        "repo_full_name": [
+          { "type": "string", "analyzer": "lucene.standard" },
+          { "type": "token" }
+        ],
+        "owasp": { "type": "token" }
+      }
+    }
+  }
+}

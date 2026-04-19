@@ -4,13 +4,13 @@ from score_breakdown import compute_breakdown, render_breakdown_markdown
 def test_empty_findings_all_clean():
     out = compute_breakdown([], static_count=0, ai_count=0)
     keys = [c["key"] for c in out["categories"]]
-    assert keys == ["secrets", "injection", "role", "leakage"]
+    assert keys == ["secrets", "injection", "role", "leakage", "tools", "output"]
     for c in out["categories"]:
         assert c["score"] == 100
         assert c["finding_count"] == 0
         assert c["confidence"] == "high"
-    assert out["signals"][0]["source"] == "static"
-    assert out["signals"][1]["source"] == "ai"
+    sources = [s["source"] for s in out["signals"]]
+    assert sources == ["static", "ai", "dataflow"]
 
 
 def test_secret_bucket_drops_score():

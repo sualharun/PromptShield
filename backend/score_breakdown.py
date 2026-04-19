@@ -1,13 +1,21 @@
-"""Explainable score breakdown: map findings into four honest categories.
+"""Explainable score breakdown: map findings into honest categories.
 
 The scanner emits flat `findings` with a `type` field. `calculate_risk_score`
 collapses everything into a 0-100 scalar. This module answers "why is that 78?"
-by bucketing findings into four categories that match what the scanner actually
+by bucketing findings into categories that match what the scanner actually
 detects — no fabricated dependency scans or CVE databases.
 
 Category score is inverted risk: 100 = clean, 0 = severe. This makes it easy to
 render as a progress bar ("how well are we doing on secrets?") rather than a
 confusing risk weight.
+
+Categories surfaced (v0.5+, agentic-aware):
+  • secrets    — Secrets & PII
+  • injection  — Prompt injection (incl. RAG context injection)
+  • role       — Role confusion / overly permissive prompts
+  • leakage    — System-prompt leakage
+  • tools      — Agent tool security      (OWASP LLM06: Excessive Agency)
+  • output     — LLM output handling      (OWASP LLM05: Improper Output Handling)
 """
 
 from typing import Dict, List
@@ -16,7 +24,15 @@ from scanner import SEVERITY_WEIGHTS
 
 
 # Maps scanner finding `type` → breakdown category.
+#
+# When adding a new finding type:
+#   1. Pick the closest category below.
+#   2. If both static AND dataflow emit the type with slightly different names,
+#      add BOTH names mapped to the same category. The merge_findings() pass
+#      should ideally deduplicate them upstream — see the `_TYPE_ALIASES` map
+#      in scanner.py if cross-name dedup is needed.
 _TYPE_TO_CATEGORY = {
+    # Original prompt-vulnerability categories
     "SECRET_IN_PROMPT": "secrets",
     "DATA_LEAKAGE": "secrets",
     "DIRECT_INJECTION": "injection",
@@ -24,6 +40,31 @@ _TYPE_TO_CATEGORY = {
     "ROLE_CONFUSION": "role",
     "OVERLY_PERMISSIVE": "role",
     "SYSTEM_PROMPT_EXPOSED": "leakage",
+    # Agent tool security (OWASP LLM06: Excessive Agency)
+    "DANGEROUS_TOOL_CAPABILITY": "tools",
+    "TOOL_UNVALIDATED_ARGS": "tools",
+    "TOOL_EXCESSIVE_SCOPE": "tools",
+    "DANGEROUS_TOOL_BODY": "tools",
+    "TOOL_PARAM_TO_EXEC": "tools",
+    "TOOL_PARAM_TO_SHELL": "tools",
+    "TOOL_PARAM_TO_SQL": "tools",
+    "TOOL_UNRESTRICTED_FILE": "tools",
+    # LLM output handling (OWASP LLM05: Improper Output Handling)
+    "LLM_OUTPUT_TO_EXEC": "output",
+    "LLM_OUTPUT_TO_SHELL": "output",
+    "LLM_OUTPUT_TO_SQL": "output",
+    "LLM_OUTPUT_UNESCAPED": "output",
+    # RAG context injection rolls into the existing prompt-injection bucket
+    "RAG_UNSANITIZED_CONTEXT": "injection",
+    # James's deeper agent-security analyzer (agent_security_scan.py) emits
+    # its own type names. Treat them as first-class members of the same
+    # categories so the breakdown UI doesn't drop them into "other".
+    "AGENT_FUNCTION_EXPOSURE": "tools",
+    "DANGEROUS_SINK": "tools",
+    "UNVALIDATED_FUNCTION_PARAM_TO_SINK": "tools",
+    # Generic dataflow-detected user-input → LLM injection lives in the
+    # injection category, same as DIRECT_INJECTION.
+    "DATAFLOW_INJECTION": "injection",
 }
 
 _CATEGORY_LABELS = [
@@ -31,6 +72,8 @@ _CATEGORY_LABELS = [
     ("injection", "Prompt injection"),
     ("role", "Role confusion"),
     ("leakage", "System-prompt leak"),
+    ("tools", "Agent tool security"),
+    ("output", "LLM output handling"),
 ]
 
 
@@ -63,6 +106,8 @@ def _category_why(key: str, findings: List[Dict]) -> str:
             "injection": "No unsanitized user input concatenation detected.",
             "role": "No jailbreak or role-override phrasing detected.",
             "leakage": "No unguarded confidential-instruction patterns detected.",
+            "tools": "No dangerous AI-exposed tools or unvalidated tool parameters detected.",
+            "output": "No unsafe execution of LLM-generated output detected.",
         }
         return messages.get(key, "No issues detected in this category.")
     # Surface the highest-severity finding's title.
@@ -75,8 +120,12 @@ def compute_breakdown(
     findings: List[Dict],
     static_count: int,
     ai_count: int,
+    dataflow_count: int = 0,
 ) -> Dict:
     """Group findings by category and derive per-source signal weights.
+
+    `dataflow_count` is optional (defaults to 0) so existing callers and tests
+    that pre-date the dataflow signal continue to work unchanged.
 
     Returns a dict with `categories` and `signals` keys suitable for JSON
     persistence and direct rendering on the Report page.
@@ -99,7 +148,7 @@ def compute_breakdown(
         for key, label in _CATEGORY_LABELS
     ]
 
-    total_signals = max(1, static_count + ai_count)
+    total_signals = max(1, static_count + ai_count + dataflow_count)
     signals = [
         {
             "source": "static",
@@ -110,6 +159,11 @@ def compute_breakdown(
             "source": "ai",
             "weight_pct": round(100 * ai_count / total_signals),
             "confidence": "medium" if ai_count else "low",
+        },
+        {
+            "source": "dataflow",
+            "weight_pct": round(100 * dataflow_count / total_signals),
+            "confidence": "high" if dataflow_count else "low",
         },
     ]
 

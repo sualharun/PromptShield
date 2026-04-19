@@ -24,6 +24,9 @@ from fastapi import APIRouter, HTTPException, Request
 from ai_analyzer import ai_scan
 from config import settings
 import repositories as repos
+import agent_registry
+import agent_alerts as agent_alerts_mod
+import agent_timeline
 from diff_utils import filter_findings_to_lines, parse_added_lines
 from github_app import GitHubClient, get_installation_token, verify_webhook_signature
 from scanner import (
@@ -258,11 +261,17 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
                 )
                 policy_decision = None
 
-            static_count = sum(
-                1 for x in all_findings if x.get("source") != "ai"
-            )
             ai_count = sum(1 for x in all_findings if x.get("source") == "ai")
-            breakdown = compute_breakdown(all_findings, static_count, ai_count)
+            dataflow_count = sum(
+                1 for x in all_findings if x.get("source") == "dataflow"
+            )
+            static_count = len(all_findings) - ai_count - dataflow_count
+            breakdown = compute_breakdown(
+                all_findings,
+                static_count,
+                ai_count,
+                dataflow_count=dataflow_count,
+            )
 
             llm_targets_list = sorted(target_set) if target_set else []
 
@@ -293,6 +302,42 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
                 }
             )
             scan_id = str(scan_doc["_id"])
+
+            # Agentic-security side-effects: tool registry, critical alerts,
+            # and time-series snapshot. Each is best-effort so the PR comment
+            # path never fails because of an Atlas hiccup.
+            try:
+                agent_registry.persist_tools_from_findings(
+                    all_findings,
+                    repo_full_name=full,
+                    pr_number=number,
+                    scan_id=scan_id,
+                )
+            except Exception:
+                logger.exception(
+                    "agent registry persist failed for PR #%s in %s (non-fatal)",
+                    number,
+                    full,
+                )
+            try:
+                agent_alerts_mod.fan_out_critical_alerts(
+                    all_findings,
+                    scan_id=scan_id,
+                    repo_full_name=full,
+                    pr_number=number,
+                    source="github",
+                )
+            except Exception:
+                logger.exception("agent alerts fan-out failed (non-fatal)")
+            try:
+                agent_timeline.snapshot_scan(
+                    all_findings,
+                    scan_id=scan_id,
+                    repo_full_name=full,
+                    source="github",
+                )
+            except Exception:
+                logger.exception("agent timeline snapshot failed (non-fatal)")
 
             col(C.AUDIT_LOGS).insert_one(
                 {

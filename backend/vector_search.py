@@ -187,17 +187,32 @@ def to_finding(matches: list[dict], *, threshold: float = 0.78) -> Optional[dict
         return None
     sev = "high" if top["score"] >= 0.88 else "medium"
     pct = int(round(top["score"] * 100))
+    category = top.get("category", "attack")
     return {
         "type": "SEMANTIC_JAILBREAK_MATCH",
-        "title": f"Semantic match to known {top.get('category', 'attack')} ({pct}% similar)",
+        "title": f"Semantic match to known {category} ({pct}% similar)",
         "severity": sev,
+        "description": (
+            f"Atlas Vector Search matched this prompt to a known "
+            f"{category} pattern in our 151-prompt corpus with "
+            f"{pct}% cosine similarity. Static rules missed it because "
+            f"the wording differs from the original — but the embedding "
+            f"shows the underlying intent is the same."
+        ),
+        "remediation": (
+            "Treat this prompt as if it were the matched attack. "
+            "Strip or escape user-controlled portions, add an instruction "
+            "guard, and consider blocking inputs that match known-vulnerable "
+            "vectors above 0.85 similarity."
+        ),
+        "source": "atlas_vector_search",
         "evidence": top["text"][:240],
         "cwe": "CWE-1039",  # Inadequate Detection of Adversarial Input Perturbations
         "owasp": "LLM01",   # Prompt Injection
         "confidence": float(top["score"]),
         "detector": "atlas_vector_search",
         "match": {
-            "category": top.get("category"),
+            "category": category,
             "score": float(top["score"]),
             "source_id": str(top.get("_id")) if top.get("_id") is not None else None,
         },

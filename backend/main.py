@@ -17,6 +17,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -71,6 +72,9 @@ from vector_search import seed_corpus as vector_seed_corpus
 from vector_search import to_finding as vector_to_finding
 from embeddings import embed as vector_embed
 import repositories as repos
+import agent_registry
+import agent_alerts as agent_alerts_mod
+import agent_timeline
 from eval_harness import run_eval, list_eval_runs
 from policy_engine import simulate_policy, save_policy_version, list_policy_versions, get_active_policy, diff_policies
 from sbom import generate_sbom
@@ -118,7 +122,7 @@ async def lifespan(app: FastAPI):
     logger.info("shutdown", extra={"event": "shutdown"})
 
 
-app = FastAPI(title="PromptShield", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="PromptShield", version="0.5.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -146,7 +150,12 @@ def _scan_job_handler(payload: dict) -> dict:
         dataflow_results = df.result()
     merged = merge_findings(static_results + dataflow_results, ai_results)
     score = calculate_risk_score(merged)
-    breakdown = compute_breakdown(merged, len(static_results), len(ai_results))
+    breakdown = compute_breakdown(
+        merged,
+        len(static_results),
+        len(ai_results),
+        dataflow_count=len(dataflow_results),
+    )
     persisted_text = redact(text) if settings.REDACT_PERSISTED_INPUT else text
     doc = repos.insert_scan(
         {
@@ -156,12 +165,20 @@ def _scan_job_handler(payload: dict) -> dict:
             "counts": {
                 "static": len(static_results),
                 "ai": len(ai_results),
+                "dataflow": len(dataflow_results),
                 "total": len(merged),
             },
             "score_breakdown": breakdown,
             "source": "web",
             "llm_targets": [],
         }
+    )
+    _persist_agent_artifacts(
+        merged,
+        scan_id=str(doc["_id"]),
+        repo_full_name=None,
+        pr_number=None,
+        source="web",
     )
     return {"scan_id": str(doc["_id"]), "risk_score": score}
 
@@ -489,6 +506,51 @@ def _log_audit(
     )
 
 
+def _persist_agent_artifacts(
+    findings: list[dict],
+    *,
+    scan_id: str,
+    repo_full_name: Optional[str],
+    pr_number: Optional[int],
+    source: str,
+) -> None:
+    """One-shot side-effect for every scan: tool registry + alerts + timeline.
+
+    Each sub-step is wrapped because none of them should be able to crash a
+    scan response. Returning quickly keeps p95 stable.
+    """
+    try:
+        agent_registry.persist_tools_from_findings(
+            findings,
+            repo_full_name=repo_full_name,
+            pr_number=pr_number,
+            scan_id=scan_id,
+        )
+    except Exception:
+        logger.exception("agent registry persist failed (non-fatal)")
+
+    try:
+        agent_alerts_mod.fan_out_critical_alerts(
+            findings,
+            scan_id=scan_id,
+            repo_full_name=repo_full_name,
+            pr_number=pr_number,
+            source=source,
+        )
+    except Exception:
+        logger.exception("agent alerts fan-out failed (non-fatal)")
+
+    try:
+        agent_timeline.snapshot_scan(
+            findings,
+            scan_id=scan_id,
+            repo_full_name=repo_full_name,
+            source=source,
+        )
+    except Exception:
+        logger.exception("agent timeline snapshot failed (non-fatal)")
+
+
 def _save_risk_snapshot(source: str = "github") -> None:
     rows = list(col(C.SCANS).find({"source": source}))
     if not rows:
@@ -746,7 +808,12 @@ def run_scan(req: ScanRequest, request: Request):
         merged = merge_findings(static_results + dataflow_results, ai_results)
         score = calculate_risk_score(merged)
         targets = detect_llm_targets(text)
-        breakdown = compute_breakdown(merged, len(static_results), len(ai_results))
+        breakdown = compute_breakdown(
+            merged,
+            len(static_results),
+            len(ai_results),
+            dataflow_count=len(dataflow_results),
+        )
         span.set_attribute("risk_score", score)
         span.set_attribute("findings_count", len(merged))
     duration_ms = int((time.monotonic() - t0) * 1000)
@@ -779,7 +846,9 @@ def run_scan(req: ScanRequest, request: Request):
         logger.warning("vector enrichment skipped: %s", e, extra={"event": "vector_skip"})
 
     persisted_text = redact(text) if settings.REDACT_PERSISTED_INPUT else text
-    # Try to persist, but if Mongo is unavailable, return stateless response
+    # Try to persist, but if Mongo is unavailable, return stateless response.
+    # Inside the try we also do the agentic-security side-effects (tool
+    # registry, alert fan-out, attack-surface snapshot) — all best-effort.
     try:
         doc = repos.insert_scan(
             {
@@ -789,6 +858,7 @@ def run_scan(req: ScanRequest, request: Request):
                 "counts": {
                     "static": len(static_results),
                     "ai": len(ai_results),
+                    "dataflow": len(dataflow_results),
                     "total": len(merged),
                 },
                 "score_breakdown": breakdown,
@@ -797,6 +867,13 @@ def run_scan(req: ScanRequest, request: Request):
                 "semantic_matches": semantic_matches,
                 "embedding": scan_embedding,
             }
+        )
+        _persist_agent_artifacts(
+            merged,
+            scan_id=str(doc["_id"]),
+            repo_full_name=None,
+            pr_number=None,
+            source="web",
         )
         _log_audit(
             actor="anonymous",
@@ -823,7 +900,6 @@ def run_scan(req: ScanRequest, request: Request):
         return _report_from_doc(doc)
     except Exception as e:
         logger.warning(f"Persistence failed, running in stateless mode: {e}")
-        # Return a ScanReport directly
         from uuid import uuid4
         now = datetime.now(timezone.utc).isoformat()
         return ScanReport(
@@ -839,6 +915,64 @@ def run_scan(req: ScanRequest, request: Request):
             author_login=None,
             llm_targets=list(targets or []),
         )
+
+
+# Demo vulnerable-agent files served to the scan page so judges (or any user)
+# can one-click load a known-vulnerable agent and see PromptShield catch it.
+# Files live at backend/examples/*.py and are committed by the team's
+# detector author. Read-only and bounded for safety.
+_EXAMPLES_DIR = Path(__file__).resolve().parent / "examples"
+_EXAMPLE_MAX_BYTES = 50_000
+
+_EXAMPLE_DESCRIPTIONS = {
+    "vulnerable_agent": (
+        "Agent that exposes file/shell/SQL tools to an LLM with no input "
+        "validation — every dangerous tool category in one file."
+    ),
+    "unsafe_output": (
+        "Agent that pipes raw LLM responses into eval(), subprocess, and "
+        "raw SQL — the LLM05 (Improper Output Handling) demo."
+    ),
+    "unsafe_rag": (
+        "RAG pipeline that concatenates retrieved vector-store chunks into "
+        "the system prompt with no sanitization (indirect prompt injection)."
+    ),
+}
+
+
+@app.get("/api/examples")
+def list_examples():
+    """Return demo vulnerable-agent files for the scan page.
+
+    The frontend renders these as one-click "Try with..." buttons that load
+    the file content into the scan textarea. Each entry includes a short
+    human-readable description so the UI can show *why* the file is risky
+    before the user runs the scan.
+    """
+    examples = []
+    if _EXAMPLES_DIR.is_dir():
+        for f in sorted(_EXAMPLES_DIR.glob("*.py")):
+            # Skip private/dunder files (e.g. __init__.py)
+            if f.name.startswith("_"):
+                continue
+            try:
+                content = f.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if len(content) > _EXAMPLE_MAX_BYTES:
+                content = content[:_EXAMPLE_MAX_BYTES]
+            examples.append(
+                {
+                    "name": f.stem,
+                    "filename": f.name,
+                    "description": _EXAMPLE_DESCRIPTIONS.get(
+                        f.stem, "Vulnerable agent demo file."
+                    ),
+                    "content": content,
+                    "language": "python",
+                }
+            )
+    return {"examples": examples, "count": len(examples)}
 
 
 @app.get("/api/scans", response_model=List[ScanSummary])
@@ -1282,7 +1416,7 @@ def compliance_report_pdf():
 @app.post("/api/findings/suggest-fix", response_model=SuggestFixResponse)
 def suggest_fix(req: SuggestFixRequest):
     f = req.finding
-    if settings.ANTHROPIC_API_KEY:
+    if settings.GOOGLE_CLOUD_PROJECT:
         prompt = (
             "Provide a secure refactor suggestion for this finding. Return plain text only with:\n"
             "1) Why unsafe\n2) Safer code sketch\n3) One-line validation step\n\n"
@@ -1516,6 +1650,13 @@ def health():
         "mongo": mongo_health_check(),
         "primary_store": settings.PRIMARY_STORE,
         "embedding_provider": settings.EMBEDDING_PROVIDER,
+        "ai": {
+            "provider": settings.AI_PROVIDER,
+            "model": settings.GEMINI_MODEL,
+            "configured": bool(settings.GOOGLE_CLOUD_PROJECT),
+            "vertex_location": settings.GOOGLE_CLOUD_LOCATION,
+        },
+        "agent_security": True,
     }
 
 

@@ -1,25 +1,90 @@
+"""AI analysis layer — Google Vertex AI (Gemini) backend.
+
+Uses the unified `google-genai` SDK in Vertex mode. Authentication is via
+Application Default Credentials (`gcloud auth application-default login`)
+or a service account JSON pointed to by GOOGLE_APPLICATION_CREDENTIALS.
+
+The AI layer is *additive* on top of the static + dataflow analyzers. It
+catches contextual issues regex/AST cannot — e.g. "this tool looks safe in
+isolation but is dangerous given the rest of the agent file's behavior".
+
+Specifically tuned to surface OWASP LLM Top 10 (2025) categories:
+  • LLM01 — Prompt Injection
+  • LLM02 — Sensitive Information Disclosure
+  • LLM05 — Improper Output Handling      (LLM_OUTPUT_TO_*)
+  • LLM06 — Excessive Agency              (DANGEROUS_TOOL_*, TOOL_*)
+  • LLM07 — System Prompt Leakage
+"""
+from __future__ import annotations
+
 import json
 import logging
 import re
-from typing import List, Dict
+from typing import Dict, List
 
 from config import settings
 
-try:
-    from anthropic import Anthropic
-except ImportError:
-    Anthropic = None
+try:  # google-genai is optional at import time so unit tests run without it
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError:  # pragma: no cover
+    genai = None
+    genai_types = None
 
 logger = logging.getLogger("promptshield.ai")
 
+
 SYSTEM_PROMPT = (
-    "You are an expert prompt security auditor. Analyze the provided prompt or code "
-    "for security vulnerabilities. Return ONLY a JSON array of findings. Each finding "
-    "must have: type (string), severity (critical|high|medium|low), title (string), "
-    "description (string, 1-2 sentences), line_number (integer or null), "
-    "remediation (string, concrete fix in 1 sentence), confidence (number between 0 and 1), "
-    "evidence (short quoted snippet from the input, max 140 chars). "
-    "Find real vulnerabilities only. Be precise."
+    "You are an expert prompt-security auditor specializing in AI agent and "
+    "LLM application security. Analyze the provided prompt or code for "
+    "security vulnerabilities. Return ONLY a JSON array of finding objects.\n\n"
+    "Each finding object MUST have these fields:\n"
+    "  - type (string)\n"
+    "  - severity (one of: critical, high, medium, low)\n"
+    "  - title (string)\n"
+    "  - description (string, 1-2 sentences)\n"
+    "  - line_number (integer or null)\n"
+    "  - remediation (string, concrete fix in 1 sentence)\n"
+    "  - confidence (number between 0 and 1)\n"
+    "  - evidence (short quoted snippet from the input, max 140 chars)\n"
+    "  - cwe (string, e.g. 'CWE-78')\n"
+    "  - owasp (string, e.g. 'LLM06: Excessive Agency')\n\n"
+    "Find real vulnerabilities only — no speculation. If the input is clean, "
+    "return an empty array [].\n\n"
+    "Pay SPECIAL ATTENTION to AI agent and LLM application risks below. "
+    "Use the exact `type` strings shown so findings merge cleanly with "
+    "static-rule and dataflow findings:\n\n"
+    "1. DANGEROUS_TOOL_CAPABILITY — Functions decorated with @tool, @mcp.tool, "
+    "@server.tool, or registered via tools=[...] / Tool(...) that perform "
+    "dangerous operations (subprocess, os.system, os.remove, shutil.rmtree, "
+    "raw cursor.execute) without any input validation, allowlist, or "
+    "authorization check. Severity: critical. CWE-78. OWASP: 'LLM06: Excessive Agency'.\n\n"
+    "2. TOOL_UNVALIDATED_ARGS — A tool function parameter flows directly into "
+    "a dangerous sink (subprocess.run, eval, exec, cursor.execute, open(...,'w'), "
+    "requests.get with AI-controlled URL) with no sanitization. "
+    "Severity: critical. CWE-78. OWASP: 'LLM06: Excessive Agency'.\n\n"
+    "3. TOOL_EXCESSIVE_SCOPE — Tool accepts arbitrary file paths, URLs, table "
+    "names, or shell commands with no allowlist, sandbox, or scope restriction. "
+    "Severity: high. CWE-732. OWASP: 'LLM06: Excessive Agency'.\n\n"
+    "4. LLM_OUTPUT_TO_EXEC — LLM API response content (response.content, "
+    "completion.choices[*].message.content, message.text, response.text) is "
+    "passed to eval() or exec(). Severity: critical. CWE-95. "
+    "OWASP: 'LLM05: Improper Output Handling'.\n\n"
+    "5. LLM_OUTPUT_TO_SHELL — LLM output is passed to subprocess.run, "
+    "os.system, os.popen, or shell=True invocations. Severity: critical. "
+    "CWE-78. OWASP: 'LLM05: Improper Output Handling'.\n\n"
+    "6. LLM_OUTPUT_TO_SQL — LLM output is interpolated into raw cursor.execute, "
+    "db.execute, or session.execute calls without parameterized queries. "
+    "Severity: critical. CWE-89. OWASP: 'LLM05: Improper Output Handling'.\n\n"
+    "7. RAG_UNSANITIZED_CONTEXT — Vector-DB retrieval results "
+    "(similarity_search, collection.query, retriever.invoke, as_retriever) "
+    "are concatenated into a prompt without sanitization or access-control "
+    "filtering, enabling indirect prompt injection. Severity: high. "
+    "CWE-74. OWASP: 'LLM01: Prompt Injection'.\n\n"
+    "8. LLM_OUTPUT_UNESCAPED — LLM response rendered as HTML "
+    "(innerHTML, dangerouslySetInnerHTML, |safe in Jinja) without escaping. "
+    "Severity: high. CWE-79. OWASP: 'LLM05: Improper Output Handling'.\n\n"
+    "Be precise. Prefer fewer high-confidence findings over many speculative ones."
 )
 
 
@@ -73,30 +138,61 @@ def _normalize(raw: List[Dict]) -> List[Dict]:
     return out
 
 
+def _gemini_client():
+    """Build a Vertex AI client. Returns None when AI layer is not configured."""
+    if not settings.GOOGLE_CLOUD_PROJECT or genai is None:
+        return None
+    try:
+        return genai.Client(
+            vertexai=True,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GOOGLE_CLOUD_LOCATION,
+        )
+    except Exception:
+        logger.exception(
+            "gemini_client init failed",
+            extra={"event": "ai_client_error"},
+        )
+        return None
+
+
 def ai_scan(text: str) -> List[Dict]:
-    if not settings.ANTHROPIC_API_KEY or Anthropic is None:
-        logger.info("ai_scan skipped (no API key or SDK)", extra={"event": "ai_skipped"})
+    """Run a Gemini security audit over arbitrary prompt or code text.
+
+    Returns a list of normalized findings. Returns [] on any failure path so
+    the rest of the scan pipeline keeps working in degraded mode.
+    """
+    client = _gemini_client()
+    if client is None:
+        logger.info(
+            "ai_scan skipped (no GOOGLE_CLOUD_PROJECT or SDK)",
+            extra={"event": "ai_skipped"},
+        )
         return []
     try:
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        msg = client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=1500,
-            system=SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Analyze the following prompt or code for vulnerabilities:\n\n```\n{text}\n```",
-                }
-            ],
+        config = genai_types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            temperature=0.1,
+            max_output_tokens=2048,
         )
-        body = "".join(
-            block.text for block in msg.content if getattr(block, "type", "") == "text"
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=(
+                "Analyze the following prompt or code for security "
+                f"vulnerabilities:\n\n```\n{text}\n```"
+            ),
+            config=config,
         )
+        body = (response.text or "").strip()
         findings = _normalize(_extract_json_array(body))
         logger.info(
             "ai_scan completed",
-            extra={"event": "ai_completed", "findings_count": len(findings)},
+            extra={
+                "event": "ai_completed",
+                "findings_count": len(findings),
+                "model": settings.GEMINI_MODEL,
+            },
         )
         return findings
     except Exception:
@@ -107,7 +203,7 @@ def ai_scan(text: str) -> List[Dict]:
 def generate_risk_narrative(graph_data: Dict, pr_info: Dict | None = None) -> str:
     """Generate a plain-English summary for dependency graph risk.
 
-    Uses Claude when configured and falls back to a deterministic summary.
+    Uses Gemini when configured and falls back to a deterministic summary.
     """
     dep_nodes = [n for n in graph_data.get("nodes", []) if n.get("type") == "dependency"]
     if not dep_nodes:
@@ -123,7 +219,8 @@ def generate_risk_narrative(graph_data: Dict, pr_info: Dict | None = None) -> st
     risk_score = graph_data.get("overall_risk_score", 0)
     pr_context = pr_info or {}
 
-    if not settings.ANTHROPIC_API_KEY or Anthropic is None:
+    client = _gemini_client()
+    if client is None:
         highest = max(dep_nodes, key=lambda n: n.get("risk_score", 0))
         return (
             f"[{threat_level}] This PR introduces {len(dep_nodes)} dependencies with possible supply-chain risk. "
@@ -148,15 +245,16 @@ Format your response as:
 Be concise and technical but accessible."""
 
     try:
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=220,
-            messages=[{"role": "user", "content": prompt}],
+        config = genai_types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=320,
         )
-        return "".join(
-            block.text for block in message.content if getattr(block, "type", "") == "text"
-        ).strip()
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=config,
+        )
+        return (response.text or "").strip()
     except Exception:
         logger.exception("generate_risk_narrative failed")
         highest = max(dep_nodes, key=lambda n: n.get("risk_score", 0))

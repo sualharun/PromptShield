@@ -56,6 +56,21 @@ class C:
     PROMPT_VECTORS = "prompt_vectors"  # corpus seeded from prompts.json
     BENCHMARK_RUNS = "benchmark_runs"  # historical eval results
 
+    # ── Agentic-security collections (v0.5+) ────────────────────────────────
+    # Tool registry: one row per (repo, tool_name) — derived from agentic
+    # findings on every scan. Powers the "agent attack surface" view.
+    AGENT_TOOLS = "agent_tools"
+    # Curated knowledge base of known dangerous tool patterns + their CVEs /
+    # exploit references. Atlas Vector Search index sits on top of this so
+    # we can match new tools to historical exploits.
+    AGENT_EXPLOIT_CORPUS = "agent_exploit_corpus"
+    # Critical agentic findings get cross-posted here so an Atlas Trigger
+    # (or an external SIEM tail) can fan out alerts. Backfilled by Python
+    # too so the demo works without trigger setup.
+    AGENT_ALERTS = "agent_alerts"
+    # Time-series snapshot of agent attack surface size per scan.
+    AGENT_SURFACE_TIMELINE = "agent_surface_timeline"
+
 
 # ── Lazy singletons ─────────────────────────────────────────────────────────
 _lock = threading.Lock()
@@ -225,6 +240,49 @@ RISK_SNAPSHOTS_SCHEMA = {
     }
 }
 
+# Agent tools registry: one document per AI-exposed function we observed
+# in scanned code. Schema is loose because tool metadata varies wildly across
+# frameworks (LangChain Tool, MCP @tool, OpenAI tools=[], CrewAI agent.tool…)
+# but we lock the keys we actually query.
+AGENT_TOOLS_SCHEMA = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["tool_name", "first_seen_at", "last_seen_at"],
+        "properties": {
+            "tool_name": {"bsonType": "string", "minLength": 1, "maxLength": 200},
+            "repo_full_name": {"bsonType": ["string", "null"]},
+            "framework": {"bsonType": ["string", "null"]},
+            "capabilities": {"bsonType": ["array", "null"]},
+            "missing_safeguards": {"bsonType": ["array", "null"]},
+            "risk_score": {"bsonType": ["double", "int"], "minimum": 0, "maximum": 100},
+            "risk_level": {"enum": ["critical", "high", "medium", "low"]},
+            "first_seen_at": {"bsonType": "date"},
+            "last_seen_at": {"bsonType": "date"},
+            "occurrences": {"bsonType": ["int", "long"], "minimum": 1},
+            "embedding": {"bsonType": ["array", "null"]},
+        },
+    }
+}
+
+# Agent surface timeline: snapshot per scan, keyed by repo when available
+# (or by source for ad-hoc web scans). Time-series collection in Atlas;
+# regular collection on mongomock.
+AGENT_SURFACE_TIMELINE_SCHEMA = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["ts"],
+        "properties": {
+            "ts": {"bsonType": "date"},
+            "tool_count": {"bsonType": ["int", "long"], "minimum": 0},
+            "critical_tool_count": {"bsonType": ["int", "long"], "minimum": 0},
+            "unsafe_output_count": {"bsonType": ["int", "long"], "minimum": 0},
+            "rag_unsanitized_count": {"bsonType": ["int", "long"], "minimum": 0},
+            "agent_risk_score": {"bsonType": ["double", "int"], "minimum": 0, "maximum": 100},
+            "meta": {"bsonType": ["object", "null"]},
+        },
+    }
+}
+
 # Benchmark runs power the model-registry view. Locked-down so a bad CI run
 # can't write garbage into the registry.
 BENCHMARK_RUNS_SCHEMA = {
@@ -304,6 +362,52 @@ def init_collections() -> None:
     # Validated collections — soft schema discipline that won't break demo writes.
     _create_or_relax(db, C.AUDIT_LOGS, AUDIT_LOGS_SCHEMA)
     _create_or_relax(db, C.BENCHMARK_RUNS, BENCHMARK_RUNS_SCHEMA)
+    _create_or_relax(db, C.AGENT_TOOLS, AGENT_TOOLS_SCHEMA)
+
+    # Agent surface timeline — Atlas time-series; falls back to plain like
+    # risk_snapshots. Keep this BEFORE the AUDIT_LOGS validator block so it
+    # exists when the validator pass runs further down.
+    if C.AGENT_SURFACE_TIMELINE not in db.list_collection_names():
+        try:
+            db.create_collection(
+                C.AGENT_SURFACE_TIMELINE,
+                timeseries={
+                    "timeField": "ts",
+                    "metaField": "meta",
+                    "granularity": "hours",
+                },
+                expireAfterSeconds=60 * 60 * 24 * 365,
+            )
+            logger.info("Created time-series collection: %s", C.AGENT_SURFACE_TIMELINE)
+        except (OperationFailure, TypeError, NotImplementedError) as e:
+            logger.info(
+                "Time-series unavailable for %s (%s) — using regular collection",
+                C.AGENT_SURFACE_TIMELINE,
+                e,
+            )
+            try:
+                db.create_collection(C.AGENT_SURFACE_TIMELINE)
+            except CollectionInvalid:
+                pass
+
+    # Apply validator only when the regular-collection fallback is in use
+    # (Atlas blocks validators on time-series collections).
+    if (
+        C.AGENT_SURFACE_TIMELINE in db.list_collection_names()
+        and not _using_mock
+    ):
+        try:
+            opts = db[C.AGENT_SURFACE_TIMELINE].options() or {}
+            if "timeseries" not in opts:
+                db.command(
+                    {
+                        "collMod": C.AGENT_SURFACE_TIMELINE,
+                        "validator": AGENT_SURFACE_TIMELINE_SCHEMA,
+                        "validationLevel": "moderate",
+                    }
+                )
+        except OperationFailure as e:
+            logger.info("collMod skipped for %s: %s", C.AGENT_SURFACE_TIMELINE, e)
     # risk_snapshots is time-series in Atlas (validators not supported on
     # time-series collections per server-side restriction; on a regular
     # fallback collection we apply the validator).
@@ -338,6 +442,8 @@ def init_collections() -> None:
         C.RISK_ACCEPTANCES,
         C.FINDING_RECORD_EVENTS,
         C.PROMPT_VECTORS,
+        C.AGENT_EXPLOIT_CORPUS,
+        C.AGENT_ALERTS,
     ]:
         _create_or_relax(db, name, None)
 
@@ -369,6 +475,27 @@ def init_collections() -> None:
 
     db[C.BENCHMARK_RUNS].create_index([("ts", DESCENDING)])
     db[C.EVAL_RUNS].create_index([("run_at", DESCENDING)])
+
+    # ── Agentic-security indexes ──────────────────────────────────────────
+    # (repo, tool_name) is the natural key — upserts dedupe on it.
+    db[C.AGENT_TOOLS].create_index(
+        [("repo_full_name", ASCENDING), ("tool_name", ASCENDING)], unique=True
+    )
+    db[C.AGENT_TOOLS].create_index([("risk_level", ASCENDING), ("last_seen_at", DESCENDING)])
+    db[C.AGENT_TOOLS].create_index([("framework", ASCENDING)])
+    db[C.AGENT_TOOLS].create_index([("capabilities", ASCENDING)])
+
+    db[C.AGENT_EXPLOIT_CORPUS].create_index([("category", ASCENDING)])
+    db[C.AGENT_EXPLOIT_CORPUS].create_index([("framework", ASCENDING)])
+
+    db[C.AGENT_ALERTS].create_index([("created_at", DESCENDING)])
+    db[C.AGENT_ALERTS].create_index([("repo_full_name", ASCENDING), ("created_at", DESCENDING)])
+    db[C.AGENT_ALERTS].create_index([("acknowledged", ASCENDING)])
+
+    # Time-series collections don't need a separate ts index (Atlas builds one),
+    # but mongomock fallback collections benefit from one.
+    if _using_mock:
+        db[C.AGENT_SURFACE_TIMELINE].create_index([("ts", DESCENDING)])
 
     logger.info("init_collections: done (mock=%s)", _using_mock)
 
