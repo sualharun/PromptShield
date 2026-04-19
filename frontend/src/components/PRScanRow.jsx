@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { providerMeta } from '../lib/agentAccounts.js'
 
 function fmt(ts) {
   try {
@@ -21,7 +22,17 @@ function scoreColor(s) {
   return '#a2191f'
 }
 
-function PRScanRow({ scan, threshold = 70, onSelect }) {
+function ProviderBadge({ provider }) {
+  const meta = providerMeta(provider)
+  return (
+    <span className={`inline-flex items-center gap-1.5 border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${meta.tone}`}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.accent }} />
+      {meta.label}
+    </span>
+  )
+}
+
+function PRScanRow({ scan, threshold = 70, onSelect, agentAccount = null }) {
   const failed = scan.risk_score >= threshold
   const sha = (scan.commit_sha || '').slice(0, 7)
   return (
@@ -36,6 +47,14 @@ function PRScanRow({ scan, threshold = 70, onSelect }) {
             <span className="mt-0.5 truncate text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
               {scan.pr_title}
             </span>
+          )}
+          {(agentAccount || scan.author_login) && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {agentAccount && <ProviderBadge provider={agentAccount.provider} />}
+              <span className="font-mono text-[11px] text-carbon-text-secondary dark:text-ibm-gray-30">
+                @{agentAccount?.githubHandle || scan.author_login}
+              </span>
+            </div>
           )}
         </div>
       </td>

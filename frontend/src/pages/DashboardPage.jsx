@@ -14,6 +14,11 @@ import {
 import PRScanRow from '../components/PRScanRow.jsx'
 import RiskGauge from '../components/RiskGauge.jsx'
 import { asNetworkErrorMessage, fetchWithTimeout } from '../lib/fetchWithTimeout.js'
+import {
+  buildAgentActivity,
+  matchAgentAccount,
+  providerMeta,
+} from '../lib/agentAccounts.js'
 
 const INSTALL_URL =
   import.meta.env?.VITE_GITHUB_APP_INSTALL_URL || '#'
@@ -162,7 +167,141 @@ function shortDay(d) {
   }
 }
 
-export default function DashboardPage({ onSelectScan }) {
+function ProviderBadge({ provider }) {
+  const meta = providerMeta(provider)
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${meta.tone}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.accent }} />
+      {meta.label}
+    </span>
+  )
+}
+
+function ConnectedAgents({ accounts, recent }) {
+  if (!accounts.length) {
+    return (
+      <section className="mt-6 border border-dashed border-carbon-border bg-white px-6 py-6 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+          Connected coding agents
+        </h2>
+        <p className="mt-3 max-w-2xl text-[13px] leading-[1.6] text-carbon-text-tertiary dark:text-ibm-gray-40">
+          Add Codex, Claude, and Cursor accounts in the Agents view to differentiate which provider
+          opened a PR and which coding-agent actions are currently being processed.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="mt-6">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+          Connected coding agents
+        </h2>
+        <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+          Attributed from GitHub authors
+        </span>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {accounts.map((account) => {
+          const matched = recent.filter((scan) => matchAgentAccount([account], scan))
+          const highestRisk = matched.length ? Math.max(...matched.map((scan) => scan.risk_score || 0)) : 0
+          return (
+            <article
+              key={account.id}
+              className="border border-carbon-border bg-white px-5 py-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <ProviderBadge provider={account.provider} />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                  connected
+                </span>
+              </div>
+              <div className="mt-4 text-lg font-medium text-carbon-text dark:text-ibm-gray-10">
+                {account.displayName}
+              </div>
+              <div className="mt-1 font-mono text-[12px] text-carbon-text-secondary dark:text-ibm-gray-30">
+                @{account.githubHandle}
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-4 border-t border-carbon-border pt-4 dark:border-ibm-gray-80">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                    Processed PRs
+                  </div>
+                  <div className="mt-1 text-2xl font-light text-carbon-text dark:text-ibm-gray-10">
+                    {matched.length}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                    Max risk
+                  </div>
+                  <div className="mt-1 text-2xl font-light" style={{ color: avgRiskColor(highestRisk) }}>
+                    {matched.length ? highestRisk : '—'}
+                  </div>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function AgentProcessingFeed({ accounts, recent }) {
+  const activity = buildAgentActivity(accounts, recent).slice(0, 6)
+
+  if (!activity.length) return null
+
+  return (
+    <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+          Agent actions being processed
+        </h2>
+        <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+          Connected providers only
+        </span>
+      </div>
+      <div className="space-y-3">
+        {activity.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-start justify-between gap-4 border border-carbon-border bg-carbon-layer px-4 py-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-100"
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <ProviderBadge provider={item.account.provider} />
+                <span className="text-[12px] font-medium text-carbon-text dark:text-ibm-gray-10">
+                  {item.account.displayName}
+                </span>
+              </div>
+              <div className="mt-2 text-[13px] leading-[1.55] text-carbon-text dark:text-ibm-gray-10">
+                PR #{item.scan.pr_number ?? '—'} in {item.scan.repo_full_name || 'unknown repo'}
+              </div>
+              <div className="mt-1 text-[12px] leading-[1.55] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                {item.summary}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                Phase
+              </div>
+              <div className="mt-1 text-[12px] font-medium text-ibm-blue-70 dark:text-ibm-blue-30">
+                {item.phase}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export default function DashboardPage({ onSelectScan, agentAccounts = [] }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -216,6 +355,7 @@ export default function DashboardPage({ onSelectScan }) {
   const empty = !data || data.total_pr_scans === 0
   const severity = data?.severity_totals || { critical: 0, high: 0, medium: 0, low: 0 }
   const avgRisk = data?.avg_risk ?? 0
+  const recent = data?.recent || []
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-8">
@@ -254,6 +394,8 @@ export default function DashboardPage({ onSelectScan }) {
           </a>
         </div>
       </div>
+
+      <ConnectedAgents accounts={agentAccounts} recent={recent} />
 
       {empty ? (
         <section className="mt-8 border border-carbon-border bg-white px-8 py-12 text-center dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
@@ -340,6 +482,8 @@ export default function DashboardPage({ onSelectScan }) {
             </div>
             <StackedSeverityBar severity={severity} />
           </section>
+
+          <AgentProcessingFeed accounts={agentAccounts} recent={recent} />
 
           {data.daily_velocity?.length > 0 && (
             <section className="mt-6 border border-carbon-border bg-white p-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
@@ -461,12 +605,13 @@ export default function DashboardPage({ onSelectScan }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.recent.map((s) => (
+                  {recent.map((s) => (
                     <PRScanRow
                       key={s.id}
                       scan={s}
                       threshold={data.threshold}
                       onSelect={onSelectScan}
+                      agentAccount={matchAgentAccount(agentAccounts, s)}
                     />
                   ))}
                 </tbody>

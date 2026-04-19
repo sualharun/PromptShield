@@ -229,6 +229,7 @@ class ScanSummary(BaseModel):
     commit_sha: Optional[str] = None
     pr_title: Optional[str] = None
     pr_url: Optional[str] = None
+    author_login: Optional[str] = None
 
 
 class RepoStat(BaseModel):
@@ -377,6 +378,7 @@ def _summary_from_scan(scan: Scan) -> ScanSummary:
         commit_sha=scan.commit_sha,
         pr_title=scan.pr_title,
         pr_url=scan.pr_url,
+        author_login=scan.author_login,
     )
 
 

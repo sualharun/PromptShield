@@ -8,11 +8,13 @@ import PMPage from './pages/PMPage.jsx'
 import PolicyPage from './pages/PolicyPage.jsx'
 import EnterprisePage from './pages/EnterprisePage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import AgentsPage from './pages/AgentsPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
 import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
 import AuthBadge from './components/AuthBadge.jsx'
 import { AuthProvider } from './auth/AuthContext.jsx'
 import { fetchWithTimeout, asNetworkErrorMessage } from './lib/fetchWithTimeout.js'
+import { loadAgentAccounts, saveAgentAccounts } from './lib/agentAccounts.js'
 
 const API = ''
 
@@ -22,6 +24,7 @@ const NAV = [
   { id: 'compliance', label: 'Compliance' },
   { id: 'pm', label: 'PM' },
   { id: 'policy', label: 'Policy' },
+  { id: 'agents', label: 'Agents' },
   { id: 'enterprise', label: 'Enterprise' },
   { id: 'scan', label: 'Scan' },
 ]
@@ -40,7 +43,12 @@ function AppShell() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [agentAccounts, setAgentAccounts] = useState(() => loadAgentAccounts())
   useTheme()
+
+  useEffect(() => {
+    saveAgentAccounts(agentAccounts)
+  }, [agentAccounts])
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -189,10 +197,24 @@ function AppShell() {
           {view === 'scan' && (
             <ScanPage onScan={runScan} loading={loading} error={error} />
           )}
-          {view === 'dashboard' && <DashboardPage onSelectScan={loadScan} />}
+          {view === 'dashboard' && (
+            <DashboardPage onSelectScan={loadScan} agentAccounts={agentAccounts} />
+          )}
           {view === 'compliance' && <CompliancePage />}
           {view === 'pm' && <PMPage onSignIn={goLogin} />}
           {view === 'policy' && <PolicyPage />}
+          {view === 'agents' && (
+            <AgentsPage
+              agentAccounts={agentAccounts}
+              onAddAccount={(account) =>
+                setAgentAccounts((current) => [account, ...current])
+              }
+              onRemoveAccount={(id) =>
+                setAgentAccounts((current) => current.filter((item) => item.id !== id))
+              }
+              scans={history}
+            />
+          )}
           {view === 'enterprise' && <EnterprisePage />}
           {view === 'login' && (
             <LoginPage onLoggedIn={() => setView('pm')} />
