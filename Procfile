@@ -1,1 +1,1 @@
-web: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port 5000 --workers 4
+web: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2
