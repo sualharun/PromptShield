@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
 function colorFor(score) {
-  if (score <= 30) return '#5ec8ff'
-  if (score <= 60) return '#ffd86e'
-  if (score <= 85) return '#ff9b52'
-  return '#ff5b73'
+  if (score <= 30) return '#24a148'
+  if (score <= 60) return '#f1c21b'
+  if (score <= 85) return '#ff832b'
+  return '#da1e28'
 }
 
 function labelFor(score) {
@@ -45,7 +45,7 @@ export default function RiskGauge({ score = 0, size = 180 }) {
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="rgba(129, 159, 224, 0.16)"
+          stroke="#d6d4cf"
           strokeWidth={stroke}
           fill="none"
         />
@@ -64,12 +64,12 @@ export default function RiskGauge({ score = 0, size = 180 }) {
         className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
       >
         <div
-          className="terminal-mono text-[44px] font-light leading-none tabular-nums"
+          className="text-[44px] font-light leading-none tabular-nums"
           style={{ color }}
         >
           {Math.round(animated)}
         </div>
-        <div className="terminal-label mt-1 text-[10px] font-medium">
+        <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#58532a]">
           {labelFor(score)}
         </div>
       </div>
