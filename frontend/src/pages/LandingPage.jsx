@@ -257,6 +257,25 @@ const DEMO_FINDINGS = [
   },
 ]
 
+const DEMO_STAGES = [
+  {
+    label: 'Envelope intake',
+    detail: 'Collect prompt, repo rules, and branch metadata.',
+  },
+  {
+    label: 'Static analysis',
+    detail: 'Run category checks across prompt, tool, and config surfaces.',
+  },
+  {
+    label: 'Semantic review',
+    detail: 'Inspect for hidden instructions and malicious repo context.',
+  },
+  {
+    label: 'Policy gate',
+    detail: 'Score the run, attach findings, and decide merge outcome.',
+  },
+]
+
 function scrollToSection(id, reduced) {
   const section = document.getElementById(id)
   if (!section) return
@@ -290,6 +309,8 @@ export default function LandingPage({ onEnterDashboard }) {
     () => DEMO_LOG_LINES.slice(0, Math.min(demoStep + 1, DEMO_LOG_LINES.length)),
     [demoStep]
   )
+  const progressValue = ((demoStep + 1) / DEMO_LOG_LINES.length) * 100
+  const currentStageIndex = demoStep <= 1 ? 0 : demoStep === 2 ? 1 : demoStep <= 4 ? 2 : 3
 
   const visibleFindings = useMemo(() => {
     if (demoStep < 3) return []
@@ -540,10 +561,84 @@ export default function LandingPage({ onEnterDashboard }) {
                       <span>local preview</span>
                     </div>
 
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[#f3cabf]">
+                        <span>Execution progress</span>
+                        <span>{Math.round(progressValue)}%</span>
+                      </div>
+                      <div className="h-2 overflow-hidden border border-[#de715d]/20 bg-black/20">
+                        <motion.div
+                          key={demoRunId}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progressValue}%` }}
+                          transition={{ duration: reduced ? 0 : 0.45, ease: 'easeOut' }}
+                          className="h-full bg-[#de715d]"
+                        />
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {DEMO_STAGES.map((stage, index) => {
+                          const state =
+                            index < currentStageIndex
+                              ? 'done'
+                              : index === currentStageIndex
+                                ? 'active'
+                                : 'pending'
+                          return (
+                            <motion.div
+                              key={stage.label}
+                              initial={false}
+                              animate={{
+                                borderColor:
+                                  state === 'done'
+                                    ? 'rgba(222,113,93,0.36)'
+                                    : state === 'active'
+                                      ? 'rgba(243,202,191,0.52)'
+                                      : 'rgba(222,113,93,0.14)',
+                                backgroundColor:
+                                  state === 'done'
+                                    ? 'rgba(255,255,255,0.05)'
+                                    : state === 'active'
+                                      ? 'rgba(222,113,93,0.14)'
+                                      : 'rgba(255,255,255,0.02)',
+                              }}
+                              className="border px-3 py-3"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#f3cabf]">
+                                  {stage.label}
+                                </span>
+                                <span
+                                  className={`h-2.5 w-2.5 rounded-full ${
+                                    state === 'done'
+                                      ? 'bg-[#de715d]'
+                                      : state === 'active'
+                                        ? 'bg-[#f3cabf]'
+                                        : 'bg-white/20'
+                                  }`}
+                                />
+                              </div>
+                              <p className="mt-2 text-[12px] leading-5 text-[#c7d0e5]">
+                                {stage.detail}
+                              </p>
+                            </motion.div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
                     <div
-                      className="mt-5 min-h-[294px] space-y-3 text-[14px] leading-6 text-[#d7dcea]"
+                      className="ibm-terminal-feed mt-5 min-h-[294px] space-y-3 text-[14px] leading-6 text-[#d7dcea]"
                       style={{ fontFamily: "'IBM Plex Mono', ui-monospace, monospace" }}
                     >
+                      {!reduced && demoRunning && (
+                        <motion.div
+                          key={`sweep-${demoRunId}-${demoStep}`}
+                          initial={{ y: -40, opacity: 0 }}
+                          animate={{ y: 340, opacity: [0, 0.28, 0] }}
+                          transition={{ duration: 1.3, ease: 'easeInOut', repeat: Infinity }}
+                          className="ibm-terminal-sweep"
+                        />
+                      )}
                       {visibleLines.map((line, index) => {
                         const isCommand = index === 0
                         const isAlert = line.includes('suspicious') || line.includes('risk score')
@@ -559,7 +654,9 @@ export default function LandingPage({ onEnterDashboard }) {
                             initial={reduced ? false : { opacity: 0, y: 8 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: reduced ? 0 : 0.22 }}
-                            className={`ibm-terminal-line ${color}`}
+                            className={`ibm-terminal-line ${color} ${
+                              index === visibleLines.length - 1 && demoRunning ? 'ibm-terminal-line-active' : ''
+                            }`}
                           >
                             {line}
                           </motion.div>
@@ -577,23 +674,48 @@ export default function LandingPage({ onEnterDashboard }) {
 
                   <div className="bg-[#f5f3ee] px-5 py-5">
                     <div className="grid gap-4">
-                      <div className="border border-[#de715d]/40 bg-white px-4 py-4">
+                      <motion.div
+                        initial={false}
+                        animate={{
+                          borderColor: demoRunning ? 'rgba(222,113,93,0.4)' : 'rgba(88,83,42,0.36)',
+                          boxShadow: demoRunning
+                            ? '0 0 0 1px rgba(222,113,93,0.05), 0 18px 36px rgba(22,33,62,0.08)'
+                            : '0 0 0 1px rgba(88,83,42,0.03), 0 12px 24px rgba(22,33,62,0.05)',
+                        }}
+                        className="border bg-white px-4 py-4"
+                      >
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#58532a]">
                           Policy verdict
                         </div>
-                        <div className="mt-2 text-[26px] font-light text-[#16213e]">Blocked before merge</div>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <div className="text-[26px] font-light text-[#16213e]">Blocked before merge</div>
+                          <span className="border border-[#de715d]/30 bg-[#fff1ec] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#b84d39]">
+                            Score 82
+                          </span>
+                        </div>
                         <p className="mt-2 text-[14px] leading-6 text-[#4b5876]">
                           Unsafe prompts, expanded tool scopes, and risky diffs are grouped into one enforcement decision.
                         </p>
-                      </div>
+                      </motion.div>
 
                       <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#58532a]">
-                          Findings attached to the merge gate
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#58532a]">
+                            Findings attached to the merge gate
+                          </div>
+                          <div className="text-[11px] font-medium text-[#63708d]">
+                            {visibleFindings.length}/{DEMO_FINDINGS.length} surfaced
+                          </div>
                         </div>
                         <div className="mt-4 space-y-3">
                           {visibleFindings.map((finding) => (
-                            <div key={finding.title} className="border border-[#de715d]/35 bg-white p-4">
+                            <motion.div
+                              key={finding.title}
+                              initial={reduced ? false : { opacity: 0, x: 18, scale: 0.98 }}
+                              animate={{ opacity: 1, x: 0, scale: 1 }}
+                              transition={{ duration: reduced ? 0 : 0.25 }}
+                              className="border border-[#de715d]/35 bg-white p-4"
+                            >
                               <div className="flex items-center justify-between gap-3">
                                 <div className="text-[15px] font-medium text-[#16213e]">{finding.title}</div>
                                 <span
@@ -607,7 +729,7 @@ export default function LandingPage({ onEnterDashboard }) {
                                 </span>
                               </div>
                               <p className="mt-2 text-[14px] leading-6 text-[#4b5876]">{finding.evidence}</p>
-                            </div>
+                            </motion.div>
                           ))}
                           {!visibleFindings.length && (
                             <div className="border border-dashed border-[#de715d]/50 bg-white px-4 py-6 text-[14px] text-[#63708d]">

@@ -131,13 +131,24 @@ body {
   background-color: #f3f1ea !important;
 }
 
-.light-workspace .bg-carbon-layer,
+.light-workspace .bg-carbon-layer {
+  background-color: #e8edf4 !important;
+}
+
 .light-workspace .bg-carbon-layer-2 {
-  background-color: #f7f5ef !important;
+  background-color: #ffffff !important;
+}
+
+.light-workspace .bg-carbon-border {
+  background-color: rgba(222, 113, 93, 0.24) !important;
 }
 
 .light-workspace .bg-ibm-gray-90,
 .light-workspace .bg-ibm-gray-100 {
+  background-color: #eef2f7 !important;
+}
+
+.light-workspace .bg-ibm-gray-20 {
   background-color: #f7f5ef !important;
 }
 
@@ -204,6 +215,72 @@ body {
 
 .light-workspace .carbon-progress::after {
   background: #de715d;
+}
+
+@layer components {
+  .app-section-label {
+    color: #58532a;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .app-panel {
+    border: 1px solid var(--carbon-border);
+    background: #ffffff;
+    color: var(--carbon-text);
+  }
+
+  .app-panel-soft {
+    border: 1px solid var(--carbon-border);
+    background: #eef2f7;
+    color: var(--carbon-text);
+  }
+
+  .app-table-row {
+    transition: background-color 160ms ease;
+  }
+
+  .app-primary-button {
+    border: 1px solid #de715d;
+    background: #de715d;
+    color: #ffffff;
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .app-primary-button:hover {
+    background: #c96351;
+    border-color: #c96351;
+  }
+
+  .app-secondary-button {
+    border: 1px solid var(--carbon-border);
+    background: #ffffff;
+    color: var(--carbon-text);
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .app-secondary-button:hover {
+    background: #fff7f4;
+    border-color: rgba(222, 113, 93, 0.45);
+  }
+}
+
+.light-workspace .app-panel {
+  background: #ffffff;
+}
+
+.light-workspace .app-panel-soft {
+  background: #eef2f7;
+}
+
+.light-workspace .app-table-row:hover {
+  background: #fff7f4;
 }
 
 /* Carbon-style focus ring */
@@ -508,8 +585,40 @@ html.dark .carbon-progress {
     );
 }
 
+.ibm-terminal-feed {
+  position: relative;
+  overflow: hidden;
+}
+
+.ibm-terminal-sweep {
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 42px;
+  background: linear-gradient(
+    180deg,
+    rgba(222, 113, 93, 0) 0%,
+    rgba(222, 113, 93, 0.12) 48%,
+    rgba(222, 113, 93, 0) 100%
+  );
+  filter: blur(8px);
+}
+
 .ibm-terminal-line {
+  position: relative;
   text-shadow: 0 0 10px rgba(222, 113, 93, 0.06);
+}
+
+.ibm-terminal-line-active::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #de715d;
+  box-shadow: 0 0 14px rgba(222, 113, 93, 0.32);
 }
 
 .ibm-live-dot {
