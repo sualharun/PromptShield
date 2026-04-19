@@ -24,6 +24,22 @@ _TYPE_TO_CATEGORY = {
     "ROLE_CONFUSION": "role",
     "OVERLY_PERMISSIVE": "role",
     "SYSTEM_PROMPT_EXPOSED": "leakage",
+    # Agent tool security (OWASP LLM07)
+    "DANGEROUS_TOOL_CAPABILITY": "tools",
+    "TOOL_UNVALIDATED_ARGS": "tools",
+    "TOOL_EXCESSIVE_SCOPE": "tools",
+    "DANGEROUS_TOOL_BODY": "tools",
+    "TOOL_PARAM_TO_SINK": "tools",
+    # LLM output handling (OWASP LLM02)
+    "LLM_OUTPUT_TO_EXEC": "output",
+    "LLM_OUTPUT_TO_SHELL": "output",
+    "LLM_OUTPUT_TO_SQL": "output",
+    "LLM_OUTPUT_UNESCAPED": "output",
+    "LLM_OUTPUT_EXEC": "output",
+    "LLM_OUTPUT_SHELL": "output",
+    "LLM_OUTPUT_SQL": "output",
+    # RAG security
+    "RAG_UNSANITIZED_CONTEXT": "injection",
 }
 
 _CATEGORY_LABELS = [
@@ -31,6 +47,8 @@ _CATEGORY_LABELS = [
     ("injection", "Prompt injection"),
     ("role", "Role confusion"),
     ("leakage", "System-prompt leak"),
+    ("tools", "Agent tool security"),
+    ("output", "LLM output handling"),
 ]
 
 
@@ -63,6 +81,8 @@ def _category_why(key: str, findings: List[Dict]) -> str:
             "injection": "No unsanitized user input concatenation detected.",
             "role": "No jailbreak or role-override phrasing detected.",
             "leakage": "No unguarded confidential-instruction patterns detected.",
+            "tools": "No dangerous tool definitions or unvalidated tool parameters detected.",
+            "output": "No unsafe execution of LLM-generated output detected.",
         }
         return messages.get(key, "No issues detected in this category.")
     # Surface the highest-severity finding's title.

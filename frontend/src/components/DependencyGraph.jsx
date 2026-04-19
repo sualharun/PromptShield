@@ -397,8 +397,8 @@ export default function DependencyGraph({ scanId }) {
 
   useEffect(() => {
     if (!graphRef.current) return
-    const charge = cleanMode ? -560 : -420
-    const linkDistance = cleanMode ? 165 : 138
+    const charge = cleanMode ? -800 : -560
+    const linkDistance = cleanMode ? 220 : 170
     const chargeForce = graphRef.current.d3Force('charge')
     if (chargeForce && typeof chargeForce.strength === 'function') {
       chargeForce.strength(charge)
@@ -408,8 +408,14 @@ export default function DependencyGraph({ scanId }) {
     if (linkForce && typeof linkForce.distance === 'function') {
       linkForce.distance(() => linkDistance)
       if (typeof linkForce.strength === 'function') {
-        linkForce.strength(cleanMode ? 0.42 : 0.34)
+        linkForce.strength(cleanMode ? 0.3 : 0.25)
       }
+    }
+
+    // Add center force to prevent drift
+    const centerForce = graphRef.current.d3Force('center')
+    if (centerForce) {
+      centerForce.strength(0.05)
     }
 
     if (typeof graphRef.current.d3ReheatSimulation === 'function') {

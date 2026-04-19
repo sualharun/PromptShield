@@ -188,10 +188,10 @@ const WORKFLOW_STEPS = [
 ]
 
 const METRICS = [
-  { value: '7', label: 'static rule categories reviewed in parallel' },
+  { value: '15+', label: 'detection rules including agent tool, output handling, and RAG security' },
   { value: '14', label: 'structural jailbreak payloads used for adversarial testing' },
   { value: '96%', label: 'F1 on the built-in vulnerable versus safe benchmark' },
-  { value: 'CWE + OWASP', label: 'mappings attached to each finding for policy and audit' },
+  { value: 'CWE + OWASP', label: 'LLM07 and LLM02 mappings attached to each finding for audit' },
 ]
 
 const COVERAGE_SURFACES = [

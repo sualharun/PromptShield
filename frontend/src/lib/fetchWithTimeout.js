@@ -1,4 +1,4 @@
-const DEFAULT_TIMEOUT_MS = 8000
+const DEFAULT_TIMEOUT_MS = 30000
 
 // Prevent indefinite pending fetches when backend/proxy is unavailable.
 export async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {

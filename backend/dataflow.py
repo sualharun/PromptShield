@@ -424,6 +424,274 @@ def dataflow_to_findings(df_results: List[DataflowFinding]) -> List[Dict]:
     return out
 
 
+# ── Tool body analysis (OWASP LLM07) ──────────────────────────────────────
+
+DANGEROUS_SINKS: Dict[str, str] = {
+    "os.system": "shell execution",
+    "os.popen": "shell execution",
+    "os.remove": "file deletion",
+    "os.unlink": "file deletion",
+    "subprocess.run": "shell execution",
+    "subprocess.call": "shell execution",
+    "subprocess.Popen": "shell execution",
+    "shutil.rmtree": "recursive directory deletion",
+    "eval": "code execution",
+    "exec": "code execution",
+}
+
+DANGEROUS_SQL_SINKS = {"cursor.execute", "db.execute", "session.execute", "engine.execute", "conn.execute"}
+
+
+def _call_name(node: ast.Call) -> Optional[str]:
+    """Return the dotted name of a Call node, e.g. 'os.system' or 'eval'."""
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        chain = _attr_chain(node.func)
+        return ".".join(chain)
+    return None
+
+
+def analyze_tools(tree: ast.Module) -> List[Dict]:
+    """Find @tool-decorated functions and check for dangerous operations."""
+    findings: List[Dict] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        is_tool = False
+        for deco in node.decorator_list:
+            if isinstance(deco, ast.Name) and deco.id == "tool":
+                is_tool = True
+            elif isinstance(deco, ast.Attribute) and deco.attr == "tool":
+                is_tool = True
+        if not is_tool:
+            continue
+
+        param_names = {arg.arg for arg in node.args.args if arg.arg != "self"}
+
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Call):
+                continue
+            call_name = _call_name(child)
+            if not call_name:
+                continue
+            lineno = getattr(child, "lineno", node.lineno)
+
+            # Check dangerous sinks
+            sink_desc = DANGEROUS_SINKS.get(call_name)
+            is_sql = call_name in DANGEROUS_SQL_SINKS or any(
+                call_name.endswith(f".{s.split('.')[-1]}") and "execute" in call_name
+                for s in DANGEROUS_SQL_SINKS
+            )
+            if not sink_desc and not is_sql:
+                continue
+
+            # Check if any param flows into args
+            arg_names: Set[str] = set()
+            for arg in child.args:
+                arg_names |= _names_in_expr(arg)
+            for kw in child.keywords:
+                arg_names |= _names_in_expr(kw.value)
+
+            param_in_args = param_names & arg_names
+            if param_in_args:
+                desc = sink_desc or "SQL execution"
+                findings.append({
+                    "type": "TOOL_PARAM_TO_SINK",
+                    "severity": "critical",
+                    "title": f"Tool parameter flows to {desc}: {', '.join(param_in_args)} → {call_name}()",
+                    "description": (
+                        f"The @tool function '{node.name}' passes parameter(s) "
+                        f"{', '.join(param_in_args)} directly to {call_name}() at line {lineno}. "
+                        f"An LLM could invoke this tool with malicious arguments."
+                    ),
+                    "line_number": lineno,
+                    "remediation": (
+                        "Validate and sanitize tool parameters with an allowlist. "
+                        "Use parameterized queries for SQL. Never pass raw parameters to shell or eval."
+                    ),
+                    "source": "dataflow",
+                    "confidence": 0.95,
+                    "evidence": f"@tool {node.name}(...) → {call_name}({', '.join(param_in_args)})",
+                    "cwe": "CWE-89" if is_sql else "CWE-78",
+                    "owasp": "LLM07: Insecure Plugin Design",
+                })
+            elif sink_desc:
+                findings.append({
+                    "type": "DANGEROUS_TOOL_BODY",
+                    "severity": "high",
+                    "title": f"Tool function contains {sink_desc}: {call_name}()",
+                    "description": (
+                        f"The @tool function '{node.name}' calls {call_name}() at line {lineno}. "
+                        f"Even without direct parameter flow, an LLM could influence execution through indirect means."
+                    ),
+                    "line_number": lineno,
+                    "remediation": (
+                        "Remove dangerous operations from tool functions or add strict authorization checks."
+                    ),
+                    "source": "dataflow",
+                    "confidence": 0.85,
+                    "evidence": f"@tool {node.name} → {call_name}()",
+                    "cwe": "CWE-78" if "shell" in sink_desc or "exec" in sink_desc else "CWE-732",
+                    "owasp": "LLM07: Insecure Plugin Design",
+                })
+    return findings
+
+
+# ── Reverse taint: LLM output → dangerous sinks (OWASP LLM02) ────────────
+
+LLM_RESPONSE_CALLS = [
+    ("messages", "create"),
+    ("completions", "create"),
+    ("chat", "completions"),
+    ("responses", "create"),
+    ("generate_content",),
+]
+
+EXEC_SINKS = {"eval", "exec"}
+SHELL_SINKS = {"subprocess.run", "subprocess.call", "subprocess.Popen", "os.system", "os.popen"}
+SQL_SINKS = {"cursor.execute", "db.execute", "session.execute", "engine.execute", "conn.execute"}
+
+
+def _is_llm_response_call(node: ast.Call) -> bool:
+    """Check if a Call node returns an LLM API response."""
+    chain = _attr_chain(node.func) if isinstance(node.func, ast.Attribute) else []
+    for pattern in LLM_RESPONSE_CALLS:
+        if len(chain) >= len(pattern):
+            tail = tuple(chain[-len(pattern):])
+            if tail == pattern:
+                return True
+    return False
+
+
+def analyze_llm_output_flow(tree: ast.Module) -> List[Dict]:
+    """Trace LLM API responses to dangerous execution sinks."""
+    findings: List[Dict] = []
+    llm_tainted: Dict[str, int] = {}  # var_name → line
+
+    for node in ast.walk(tree):
+        # Detect: result = client.messages.create(...)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            value = node.value if isinstance(node, ast.AnnAssign) else node.value
+            if value is None:
+                continue
+            if isinstance(value, ast.Call) and _is_llm_response_call(value):
+                targets = []
+                if isinstance(node, ast.Assign):
+                    for t in node.targets:
+                        if isinstance(t, ast.Name):
+                            targets.append(t.id)
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    targets.append(node.target.id)
+                lineno = getattr(node, "lineno", 0)
+                for tgt in targets:
+                    llm_tainted[tgt] = lineno
+
+            # Propagate: code = response.content[0].text
+            if value is not None:
+                names = _names_in_expr(value)
+                for name in names:
+                    if name in llm_tainted:
+                        targets = []
+                        if isinstance(node, ast.Assign):
+                            for t in node.targets:
+                                if isinstance(t, ast.Name):
+                                    targets.append(t.id)
+                        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                            targets.append(node.target.id)
+                        lineno = getattr(node, "lineno", 0)
+                        for tgt in targets:
+                            llm_tainted[tgt] = lineno
+                        break
+
+    if not llm_tainted:
+        return findings
+
+    # Now scan for dangerous sinks consuming tainted vars
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        call_name = _call_name(node)
+        if not call_name:
+            continue
+        lineno = getattr(node, "lineno", 0)
+
+        # Collect all arg names
+        arg_names: Set[str] = set()
+        for arg in node.args:
+            arg_names |= _names_in_expr(arg)
+        for kw in node.keywords:
+            arg_names |= _names_in_expr(kw.value)
+
+        tainted_in_args = arg_names & set(llm_tainted.keys())
+        if not tainted_in_args:
+            continue
+
+        tainted_var = next(iter(tainted_in_args))
+        source_line = llm_tainted[tainted_var]
+
+        if call_name in EXEC_SINKS:
+            findings.append({
+                "type": "LLM_OUTPUT_EXEC",
+                "severity": "critical",
+                "title": f"LLM output executed via {call_name}(): {tainted_var}",
+                "description": (
+                    f"LLM API response stored in '{tainted_var}' (line {source_line}) "
+                    f"is passed to {call_name}() at line {lineno}, enabling arbitrary code execution."
+                ),
+                "line_number": lineno,
+                "remediation": "Never execute LLM output directly. Parse and validate against an expected schema.",
+                "source": "dataflow",
+                "confidence": 0.95,
+                "evidence": f"L{source_line}: {tainted_var} ← LLM response → L{lineno}: {call_name}({tainted_var})",
+                "cwe": "CWE-95",
+                "owasp": "LLM02: Insecure Output Handling",
+            })
+        elif call_name in SHELL_SINKS:
+            findings.append({
+                "type": "LLM_OUTPUT_SHELL",
+                "severity": "critical",
+                "title": f"LLM output passed to shell: {tainted_var} → {call_name}()",
+                "description": (
+                    f"LLM API response stored in '{tainted_var}' (line {source_line}) "
+                    f"is passed to {call_name}() at line {lineno}, enabling remote command execution."
+                ),
+                "line_number": lineno,
+                "remediation": "Never pass LLM output to shell commands. Use structured output and validate.",
+                "source": "dataflow",
+                "confidence": 0.95,
+                "evidence": f"L{source_line}: {tainted_var} ← LLM response → L{lineno}: {call_name}({tainted_var})",
+                "cwe": "CWE-78",
+                "owasp": "LLM02: Insecure Output Handling",
+            })
+        elif call_name in SQL_SINKS or "execute" in call_name:
+            findings.append({
+                "type": "LLM_OUTPUT_SQL",
+                "severity": "critical",
+                "title": f"LLM output used in SQL: {tainted_var} → {call_name}()",
+                "description": (
+                    f"LLM API response stored in '{tainted_var}' (line {source_line}) "
+                    f"is passed to {call_name}() at line {lineno}, enabling SQL injection."
+                ),
+                "line_number": lineno,
+                "remediation": "Use parameterized queries. Never pass raw LLM output as SQL.",
+                "source": "dataflow",
+                "confidence": 0.95,
+                "evidence": f"L{source_line}: {tainted_var} ← LLM response → L{lineno}: {call_name}({tainted_var})",
+                "cwe": "CWE-89",
+                "owasp": "LLM02: Insecure Output Handling",
+            })
+
+    return findings
+
+
 def scan_dataflow(text: str) -> List[Dict]:
     """Top-level entry point: parse + analyze + convert to findings."""
-    return dataflow_to_findings(analyze(text))
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return dataflow_to_findings(analyze(text))
+    forward = dataflow_to_findings(analyze(text))
+    tools = analyze_tools(tree)
+    llm_output = analyze_llm_output_flow(tree)
+    return forward + tools + llm_output

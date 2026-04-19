@@ -685,7 +685,7 @@ export default function AgentGraph({ scanId }) {
               <div className="flex flex-wrap items-center gap-2 font-mono text-[12px]">
                 {selectedChain.path.map((step, i) => (
                   <span key={i} className="flex items-center gap-2">
-                    <span className="border border-carbon-border bg-carbon-layer px-2 py-1 dark:border-ibm-gray-80 dark:bg-ibm-gray-100 dark:text-ibm-gray-10">
+                    <span className="border border-carbon-border bg-carbon-layer px-2 py-1 text-carbon-text dark:border-ibm-gray-80 dark:bg-ibm-gray-100 dark:text-ibm-gray-10">
                       {step}
                     </span>
                     {i < selectedChain.path.length - 1 && (

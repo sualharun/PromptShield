@@ -21,6 +21,9 @@ mongomock==4.2.0.post1
 websockets==13.1
 certifi>=2024.8.30
 
+# ── Google Vertex AI (Gemini) ─────────────────────────────────────────────────
+google-genai>=1.0.0
+
 # ── ML layer (training + embeddings for Atlas Vector Search) ────────────────
 scikit-learn==1.5.2
 numpy==2.1.1

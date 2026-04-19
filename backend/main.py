@@ -10,6 +10,7 @@ import csv
 import io
 import json
 import logging
+from pathlib import Path
 import re
 import time
 import uuid
@@ -1500,6 +1501,23 @@ def get_sbom():
 
 
 # --- Health ---
+
+@app.get("/api/examples")
+def list_examples():
+    """Return the demo vulnerable agent files for the 'Try with vulnerable agent' button."""
+    examples_dir = Path(__file__).resolve().parent / "examples"
+    if not examples_dir.is_dir():
+        return {"examples": []}
+    out = []
+    for p in sorted(examples_dir.glob("*.py")):
+        if p.name.startswith("__"):
+            continue
+        out.append({
+            "filename": p.name,
+            "content": p.read_text(),
+        })
+    return {"examples": out}
+
 
 @app.get("/api/health")
 def health():

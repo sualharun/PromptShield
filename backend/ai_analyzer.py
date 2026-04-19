@@ -10,6 +10,11 @@ try:
 except ImportError:
     Anthropic = None
 
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
 logger = logging.getLogger("promptshield.ai")
 
 SYSTEM_PROMPT = (
@@ -18,9 +23,24 @@ SYSTEM_PROMPT = (
     "must have: type (string), severity (critical|high|medium|low), title (string), "
     "description (string, 1-2 sentences), line_number (integer or null), "
     "remediation (string, concrete fix in 1 sentence), confidence (number between 0 and 1), "
-    "evidence (short quoted snippet from the input, max 140 chars). "
-    "Find real vulnerabilities only. Be precise."
+    "evidence (short quoted snippet from the input, max 140 chars), "
+    "cwe (string, e.g. CWE-78), owasp (string, e.g. LLM07). "
+    "Find real vulnerabilities only. Be precise.\n\n"
+    "Additionally, analyze for AI agent security risks (OWASP LLM07 and LLM02):\n"
+    "- Functions decorated with @tool or registered via tools=[] that perform dangerous operations "
+    "(shell commands, file deletion, database queries, code execution) without input validation "
+    "or authorization checks. Flag as DANGEROUS_TOOL_CAPABILITY or TOOL_UNVALIDATED_ARGS.\n"
+    "- LLM API response content (response.content, completion.choices, message.text) being passed "
+    "to eval(), exec(), subprocess, os.system(), or raw SQL cursor.execute(). "
+    "Flag as LLM_OUTPUT_TO_EXEC, LLM_OUTPUT_TO_SHELL, or LLM_OUTPUT_TO_SQL.\n"
+    "- Vector database retrieval results (similarity_search, collection.query) concatenated into "
+    "prompts without sanitization. Flag as RAG_UNSANITIZED_CONTEXT.\n"
+    "- Tool functions with unrestricted scope (can access any file path, any DB table, any URL). "
+    "Flag as TOOL_EXCESSIVE_SCOPE.\n"
+    "Map findings to CWE-78, CWE-89, CWE-95, CWE-74 and OWASP LLM07 or LLM02 as appropriate."
 )
+
+USER_PROMPT_TEMPLATE = "Analyze the following prompt or code for vulnerabilities:\n\n```\n{text}\n```"
 
 
 def _extract_json_array(text: str) -> List[Dict]:
@@ -73,41 +93,75 @@ def _normalize(raw: List[Dict]) -> List[Dict]:
     return out
 
 
+def _resolve_provider() -> str:
+    """Determine which AI provider to use: 'anthropic', 'gemini', or 'none'."""
+    explicit = settings.AI_PROVIDER
+    if explicit in ("anthropic", "gemini"):
+        return explicit
+    if settings.ANTHROPIC_API_KEY and Anthropic is not None:
+        return "anthropic"
+    if settings.GOOGLE_CLOUD_PROJECT and genai is not None:
+        return "gemini"
+    return "none"
+
+
+def _scan_anthropic(text: str) -> List[Dict]:
+    client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    msg = client.messages.create(
+        model=settings.AI_MODEL,
+        max_tokens=1500,
+        system=SYSTEM_PROMPT,
+        messages=[
+            {
+                "role": "user",
+                "content": USER_PROMPT_TEMPLATE.format(text=text),
+            }
+        ],
+    )
+    body = "".join(
+        block.text for block in msg.content if getattr(block, "type", "") == "text"
+    )
+    return _normalize(_extract_json_array(body))
+
+
+def _scan_gemini(text: str) -> List[Dict]:
+    client = genai.Client(
+        vertexai=True,
+        project=settings.GOOGLE_CLOUD_PROJECT,
+        location=settings.GOOGLE_CLOUD_LOCATION,
+    )
+    response = client.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=f"{SYSTEM_PROMPT}\n\n{USER_PROMPT_TEMPLATE.format(text=text)}",
+    )
+    body = response.text or ""
+    return _normalize(_extract_json_array(body))
+
+
 def ai_scan(text: str) -> List[Dict]:
-    if not settings.ANTHROPIC_API_KEY or Anthropic is None:
-        logger.info("ai_scan skipped (no API key or SDK)", extra={"event": "ai_skipped"})
+    provider = _resolve_provider()
+    if provider == "none":
+        logger.info("ai_scan skipped (no AI provider configured)", extra={"event": "ai_skipped"})
         return []
     try:
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        msg = client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=1500,
-            system=SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Analyze the following prompt or code for vulnerabilities:\n\n```\n{text}\n```",
-                }
-            ],
-        )
-        body = "".join(
-            block.text for block in msg.content if getattr(block, "type", "") == "text"
-        )
-        findings = _normalize(_extract_json_array(body))
+        if provider == "anthropic":
+            findings = _scan_anthropic(text)
+        else:
+            findings = _scan_gemini(text)
         logger.info(
             "ai_scan completed",
-            extra={"event": "ai_completed", "findings_count": len(findings)},
+            extra={"event": "ai_completed", "provider": provider, "findings_count": len(findings)},
         )
         return findings
     except Exception:
-        logger.exception("ai_scan failed", extra={"event": "ai_error"})
+        logger.exception("ai_scan failed", extra={"event": "ai_error", "provider": provider})
         return []
 
 
 def generate_risk_narrative(graph_data: Dict, pr_info: Dict | None = None) -> str:
     """Generate a plain-English summary for dependency graph risk.
 
-    Uses Claude when configured and falls back to a deterministic summary.
+    Uses the configured AI provider and falls back to a deterministic summary.
     """
     dep_nodes = [n for n in graph_data.get("nodes", []) if n.get("type") == "dependency"]
     if not dep_nodes:
@@ -122,14 +176,6 @@ def generate_risk_narrative(graph_data: Dict, pr_info: Dict | None = None) -> st
     threat_level = graph_data.get("threat_level", "LOW")
     risk_score = graph_data.get("overall_risk_score", 0)
     pr_context = pr_info or {}
-
-    if not settings.ANTHROPIC_API_KEY or Anthropic is None:
-        highest = max(dep_nodes, key=lambda n: n.get("risk_score", 0))
-        return (
-            f"[{threat_level}] This PR introduces {len(dep_nodes)} dependencies with possible supply-chain risk. "
-            f"Highest risk package is {highest.get('name')}@{highest.get('version', '?')} "
-            f"({highest.get('risk_score', 0)}/100). Review and pin safer versions before merge."
-        )
 
     prompt = f"""Analyze this PR's dependency risk profile and explain in 2-3 sentences, plain English.
 
@@ -147,21 +193,40 @@ Format your response as:
 
 Be concise and technical but accessible."""
 
-    try:
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=220,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return "".join(
-            block.text for block in message.content if getattr(block, "type", "") == "text"
-        ).strip()
-    except Exception:
-        logger.exception("generate_risk_narrative failed")
+    def _fallback() -> str:
         highest = max(dep_nodes, key=lambda n: n.get("risk_score", 0))
         return (
-            f"[{threat_level}] This PR introduces {len(dep_nodes)} dependencies with potential CVE exposure. "
-            f"Most risky package: {highest.get('name')} ({highest.get('risk_score', 0)}/100). "
-            "Recommendation: upgrade or replace the highest-risk transitive dependencies before merge."
+            f"[{threat_level}] This PR introduces {len(dep_nodes)} dependencies with possible supply-chain risk. "
+            f"Highest risk package is {highest.get('name')}@{highest.get('version', '?')} "
+            f"({highest.get('risk_score', 0)}/100). Review and pin safer versions before merge."
         )
+
+    provider = _resolve_provider()
+    if provider == "none":
+        return _fallback()
+
+    try:
+        if provider == "anthropic":
+            client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            message = client.messages.create(
+                model=settings.AI_MODEL,
+                max_tokens=220,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return "".join(
+                block.text for block in message.content if getattr(block, "type", "") == "text"
+            ).strip()
+        else:
+            client = genai.Client(
+                vertexai=True,
+                project=settings.GOOGLE_CLOUD_PROJECT,
+                location=settings.GOOGLE_CLOUD_LOCATION,
+            )
+            response = client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+            )
+            return (response.text or "").strip()
+    except Exception:
+        logger.exception("generate_risk_narrative failed")
+        return _fallback()

@@ -172,16 +172,18 @@ export default function DashboardPage({ onSelectScan }) {
   const [hybrid, setHybrid] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  useEffect(() => {
-    let cancelled = false
+  const loadDashboard = () => {
     setLoading(true)
-    Promise.all([
+    setError(null)
+    return Promise.all([
       fetchWithTimeout('/api/dashboard/github'),
       fetchWithTimeout('/api/v2/risk-timeline?source=github&days=30').catch(() => null),
     ])
       .then(([dashboardRes, atlasTimelineRes]) => {
-        if (cancelled) return
         if (!dashboardRes?.ok) {
           throw new Error(`Dashboard load failed (${dashboardRes?.status ?? 'n/a'})`)
         }
@@ -190,22 +192,51 @@ export default function DashboardPage({ onSelectScan }) {
           atlasTimelineRes?.ok ? atlasTimelineRes.json() : Promise.resolve(null),
         ])
       })
-      .then((resolved) => {
-        if (!resolved || cancelled) return
-        const [dashboardData, timelineData] = resolved
+      .then(([dashboardData, timelineData]) => {
         setData(dashboardData)
         setAtlasTimeline(timelineData?.points || [])
       })
       .catch((e) => {
-        if (!cancelled) setError(asNetworkErrorMessage(e, 'Dashboard load failed'))
+        setError(asNetworkErrorMessage(e, 'Dashboard load failed'))
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        setLoading(false)
       })
-    return () => {
-      cancelled = true
+  }
+
+  useEffect(() => {
+    loadDashboard()
+  }, [refreshKey])
+
+  // Auto-sync from GitHub when dashboard loads empty
+  const [autoSynced, setAutoSynced] = useState(false)
+  useEffect(() => {
+    if (!loading && data && data.total_pr_scans === 0 && !autoSynced && !syncing) {
+      setAutoSynced(true)
+      syncFromGitHub()
     }
-  }, [])
+  }, [loading, data, autoSynced, syncing])
+
+  const syncFromGitHub = async () => {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const r = await fetchWithTimeout('/api/github/sync', { method: 'POST' }, 60000)
+      if (!r.ok) {
+        const detail = await r.json().catch(() => ({}))
+        throw new Error(detail.detail || `Sync failed (${r.status})`)
+      }
+      const result = await r.json()
+      setSyncResult(result)
+      if (result.synced > 0) {
+        setRefreshKey((k) => k + 1)
+      }
+    } catch (e) {
+      setSyncResult({ error: e.message || 'Sync failed' })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -262,6 +293,14 @@ export default function DashboardPage({ onSelectScan }) {
               <span className="text-xs">↓</span>
             </a>
           )}
+          <button
+            onClick={syncFromGitHub}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 border border-carbon-border bg-white px-4 py-2 text-sm font-medium text-carbon-text transition-colors hover:bg-carbon-layer disabled:opacity-60 dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80"
+          >
+            {syncing ? 'Syncing…' : 'Sync PRs'}
+            <span className="text-xs">{syncing ? '⟳' : '↻'}</span>
+          </button>
           <a
             href={INSTALL_URL}
             target="_blank"
@@ -273,6 +312,26 @@ export default function DashboardPage({ onSelectScan }) {
           </a>
         </div>
       </div>
+
+      {syncResult && (
+        <div
+          className={`mb-4 border px-4 py-3 text-sm ${
+            syncResult.error
+              ? 'border-ibm-red-60/40 bg-[#fff1ec] text-[#8f3c2d]'
+              : 'border-ibm-green-50/40 bg-[#defbe6] text-[#0e6027]'
+          }`}
+        >
+          {syncResult.error
+            ? `Sync failed: ${syncResult.error}`
+            : `Synced ${syncResult.synced} PR scan(s) from GitHub.`}
+          <button
+            onClick={() => setSyncResult(null)}
+            className="ml-3 text-xs underline"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
 
       <div className="mb-3">
         <HybridSearchBar

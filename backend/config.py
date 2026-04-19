@@ -27,8 +27,10 @@ def _load_pem(env_value: str | None, env_path_value: str | None) -> str | None:
             return None
     if not env_value:
         return None
-    if env_value.strip().startswith("-----BEGIN"):
-        return env_value
+    # Normalize literal \n (common when pasting into env var consoles like AWS EB)
+    normalized = env_value.replace("\\n", "\n")
+    if normalized.strip().startswith("-----BEGIN"):
+        return normalized
     # Treat as a path if it's not a PEM body
     p = Path(env_value).expanduser()
     if p.is_file():
@@ -51,6 +53,12 @@ class Settings:
     ]
     ANTHROPIC_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY")
     AI_MODEL: str = os.environ.get("AI_MODEL", "claude-sonnet-4-20250514")
+
+    # AI provider: "anthropic" or "gemini". Auto-detected if not set.
+    AI_PROVIDER: str = os.environ.get("AI_PROVIDER", "").strip().lower()
+    GOOGLE_CLOUD_PROJECT: str | None = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    GOOGLE_CLOUD_LOCATION: str = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+    GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     SCAN_RATE_LIMIT: int = int(os.environ.get("SCAN_RATE_LIMIT", "10"))
     SCAN_RATE_WINDOW: int = int(os.environ.get("SCAN_RATE_WINDOW", "60"))
     MAX_INPUT_CHARS: int = int(os.environ.get("MAX_INPUT_CHARS", "50000"))

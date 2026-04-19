@@ -187,13 +187,16 @@ def to_finding(matches: list[dict], *, threshold: float = 0.78) -> Optional[dict
         return None
     sev = "high" if top["score"] >= 0.88 else "medium"
     pct = int(round(top["score"] * 100))
+    category = top.get("category", "attack")
     return {
         "type": "SEMANTIC_JAILBREAK_MATCH",
-        "title": f"Semantic match to known {top.get('category', 'attack')} ({pct}% similar)",
+        "title": f"Semantic match to known {category} ({pct}% similar)",
         "severity": sev,
+        "description": f"This input is {pct}% semantically similar to a known {category} prompt in the threat corpus.",
+        "remediation": "Review the input for adversarial intent. Add input validation or guardrails to reject prompts that resemble known attack patterns.",
         "evidence": top["text"][:240],
-        "cwe": "CWE-1039",  # Inadequate Detection of Adversarial Input Perturbations
-        "owasp": "LLM01",   # Prompt Injection
+        "cwe": "CWE-1039",
+        "owasp": "LLM01",
         "confidence": float(top["score"]),
         "detector": "atlas_vector_search",
         "match": {

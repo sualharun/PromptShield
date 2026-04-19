@@ -19,13 +19,14 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from ai_analyzer import ai_scan
 from config import settings
 import repositories as repos
 from diff_utils import filter_findings_to_lines, parse_added_lines
-from github_app import GitHubClient, get_installation_token, verify_webhook_signature
+from github_app import GitHubClient, get_installation_token, sign_app_jwt, verify_webhook_signature
 from scanner import (
     calculate_risk_score,
     detect_language_from_filename,
@@ -398,6 +399,164 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
             except Exception:
                 pass
             raise
+
+
+def _scan_pr_for_sync(
+    owner: str, repo_name: str, full: str, pr: Dict[str, Any], token: str
+) -> Dict[str, Any] | None:
+    """Scan a single PR without creating check runs or posting review comments.
+    Used by the sync endpoint to populate the dashboard from existing PRs."""
+    number = pr["number"]
+    head_sha = pr["head"]["sha"]
+    pr_title = pr.get("title")
+    pr_url = pr.get("html_url")
+    author_login = (pr.get("user") or {}).get("login")
+
+    # Skip if already scanned at this commit
+    existing = col(C.SCANS).find_one(
+        {"source": "github", "github.repo_full_name": full, "github.pr_number": number, "github.commit_sha": head_sha}
+    )
+    if existing:
+        return None
+
+    with _make_client(token) as gh:
+        all_findings: List[Dict[str, Any]] = []
+        files_scanned = 0
+        target_set: set[str] = set()
+        try:
+            files = gh.list_pr_files(owner, repo_name, number)
+            for f in files:
+                filename = f.get("filename") or ""
+                if not f.get("patch"):
+                    continue
+                if not _is_text_file(filename):
+                    continue
+                if (f.get("changes") or 0) == 0:
+                    continue
+                content = gh.get_file_content(owner, repo_name, filename, head_sha)
+                if not content or len(content) > settings.MAX_INPUT_CHARS:
+                    continue
+                files_scanned += 1
+                all_findings.extend(_scan_one_file(f, content))
+                target_set.update(detect_llm_targets(content))
+
+            score = calculate_risk_score(all_findings)
+            counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            for fnd in all_findings:
+                sev = (fnd.get("severity") or "low").lower()
+                if sev in counts:
+                    counts[sev] += 1
+
+            static_count = sum(1 for x in all_findings if x.get("source") != "ai")
+            ai_count = sum(1 for x in all_findings if x.get("source") == "ai")
+            breakdown = compute_breakdown(all_findings, static_count, ai_count)
+
+            scan_doc = repos.insert_scan(
+                {
+                    "input_text": (
+                        f"PR #{number} in {full} · {files_scanned} file(s) · "
+                        f"{head_sha[:7]}"
+                    ),
+                    "risk_score": score,
+                    "findings": all_findings,
+                    "counts": {"static": static_count, "ai": ai_count, "total": len(all_findings)},
+                    "source": "github",
+                    "github": {
+                        "repo_full_name": full,
+                        "pr_number": number,
+                        "commit_sha": head_sha,
+                        "pr_title": pr_title,
+                        "pr_url": pr_url,
+                        "author_login": author_login,
+                    },
+                    "score_breakdown": breakdown,
+                    "llm_targets": sorted(target_set) if target_set else [],
+                }
+            )
+
+            col(C.AUDIT_LOGS).insert_one(
+                {
+                    "actor": "github-sync",
+                    "action": "PR_SCAN_COMPLETED",
+                    "source": "github",
+                    "repo_full_name": full,
+                    "pr_number": number,
+                    "scan_id": str(scan_doc["_id"]),
+                    "details": {"risk_score": score, "files_scanned": files_scanned, "findings": len(all_findings)},
+                    "created_at": datetime.now(timezone.utc),
+                }
+            )
+
+            logger.info("sync scan complete", extra={"repo": full, "pr": number, "score": score})
+            return {"scan_id": str(scan_doc["_id"]), "risk_score": score, "counts": counts, "pr_number": number}
+        except Exception:
+            logger.exception("sync scan failed", extra={"repo": full, "pr": number})
+            return None
+
+
+@router.post("/sync")
+def github_sync():
+    """Fetch open PRs from all installed repos and scan them into the dashboard."""
+    if not settings.GITHUB_APP_ID or not settings.GITHUB_APP_PRIVATE_KEY:
+        raise HTTPException(status_code=503, detail="GitHub App not configured")
+
+    app_jwt = sign_app_jwt()
+    # List all installations
+    r = httpx.get(
+        f"https://api.github.com/app/installations",
+        headers={
+            "Authorization": f"Bearer {app_jwt}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "PromptShield/0.3",
+        },
+        timeout=10.0,
+    )
+    r.raise_for_status()
+    installations = r.json()
+
+    results = []
+    for inst in installations:
+        inst_id = inst["id"]
+        token = get_installation_token(inst_id)
+        # List repos for this installation
+        repos_r = httpx.get(
+            f"https://api.github.com/installation/repositories",
+            headers={
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "PromptShield/0.3",
+            },
+            timeout=10.0,
+        )
+        repos_r.raise_for_status()
+        repo_list = repos_r.json().get("repositories", [])
+
+        for repo_obj in repo_list:
+            owner = repo_obj["owner"]["login"]
+            repo_name = repo_obj["name"]
+            full = repo_obj["full_name"]
+
+            # List open PRs
+            prs_r = httpx.get(
+                f"https://api.github.com/repos/{owner}/{repo_name}/pulls",
+                headers={
+                    "Authorization": f"token {token}",
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "PromptShield/0.3",
+                },
+                params={"state": "open", "per_page": 10},
+                timeout=10.0,
+            )
+            if prs_r.status_code != 200:
+                continue
+            prs = prs_r.json()
+
+            for pr in prs:
+                result = _scan_pr_for_sync(owner, repo_name, full, pr, token)
+                if result:
+                    results.append(result)
+
+    return {"ok": True, "synced": len(results), "scans": results}
 
 
 @router.post("/webhook")

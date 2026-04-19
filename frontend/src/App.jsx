@@ -66,7 +66,7 @@ function AppShell() {
   }, [refreshHistory])
 
   useEffect(() => {
-    if (!authLoading && !user && (view === 'dashboard' || view === 'pm')) {
+    if (!authLoading && !user && view === 'pm') {
       setPendingView(view)
       setView('login')
     }
@@ -118,14 +118,8 @@ function AppShell() {
   const goLogin = () => setView('login')
 
   const goDashboard = useCallback(() => {
-    if (authLoading) return
-    if (!user) {
-      setPendingView('dashboard')
-      setView('login')
-      return
-    }
     setView('dashboard')
-  }, [authLoading, user])
+  }, [])
 
   const goProtected = useCallback(
     (nextView) => {
