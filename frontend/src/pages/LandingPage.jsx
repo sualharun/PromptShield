@@ -76,91 +76,58 @@ const METRICS = [
   },
 ]
 
-const TESTIMONIALS = [
+const FEATURE_SHOWCASES = [
   {
-    label: 'Shift-left review',
-    metric: 'Before merge',
-    quote:
-      'PromptShield is built to catch risky prompt and agent changes during pull request review instead of waiting for runtime monitoring after deploy.',
-    name: 'README',
-    title: 'Product positioning',
+    id: 'pr-review',
+    title: 'GitHub review in minutes, not weeks',
+    description: 'Automated scanning catches risky prompts and agent code during pull request review—before merge. Get inline findings with evidence and fix guidance.',
+    benefits: [
+      'Inline PR comments on changed lines only',
+      'Static rules + semantic AI audit combined',
+      'Severity and confidence scoring',
+      'Concrete remediation guidance',
+    ],
+    cta: 'Learn more about PR Review',
+    visual: 'pr-comments',
   },
   {
-    label: 'Open-source posture',
-    metric: 'Self-hostable',
-    quote:
-      'The repo already ships scanning, compliance reporting, PM analytics, policy validation, dependency CVE checks, and GitHub App review flows in one stack.',
-    name: 'README',
-    title: 'Current feature set',
-  },
-]
-
-const RESULTS = [
-  {
-    workflow: 'PR prompt review',
-    beforeLabel: 'Where risk is found',
-    before: 'Late in QA',
-    afterLabel: 'Where risk is found',
-    after: 'During code review',
-    result: 'Higher-confidence blocking before merge',
+    id: 'risk-scoring',
+    title: 'Repeatable risk scoring as a system',
+    description: 'Move beyond manual review with quantified risk from 0–100. Findings are ranked by severity with confidence metrics and evidence snippets for consistent decisions.',
+    benefits: [
+      'Quantified severity and confidence',
+      'Evidence extraction from source code',
+      'Repeatable ML-backed scoring',
+      'Exportable risk reports',
+    ],
+    cta: 'Learn more about Risk Scoring',
+    visual: 'risk-chart',
   },
   {
-    workflow: 'Semantic + static analysis',
-    beforeLabel: 'Coverage',
-    before: 'Regex only',
-    afterLabel: 'Coverage',
-    after: 'Layered analysis',
-    result: 'Findings sorted by severity and confidence',
+    id: 'policy-gates',
+    title: 'Policy-as-code gates locked to your repos',
+    description: 'Use .promptshield.yml to define per-repo security policies. Set thresholds, override rules, ignore findings, and automate gate enforcement on merge.',
+    benefits: [
+      'YAML-based policy configuration',
+      'Per-repository customization',
+      'Threshold and override rules',
+      'Immutable audit trail of decisions',
+    ],
+    cta: 'Learn more about Policy Gates',
+    visual: 'policy-yaml',
   },
   {
-    workflow: '.promptshield.yml policy',
-    beforeLabel: 'Repo gate',
-    before: 'One-size-fits-all',
-    afterLabel: 'Repo gate',
-    after: 'Configurable',
-    result: 'Thresholds, overrides, and ignore rules per repo',
-  },
-  {
-    workflow: 'History and audit trail',
-    beforeLabel: 'Evidence',
-    before: 'Transient',
-    afterLabel: 'Evidence',
-    after: 'Persistent',
-    result: 'Last 10 scans and immutable-style activity log',
-  },
-  {
-    workflow: 'Compliance exports',
-    beforeLabel: 'Governance handoff',
-    before: 'Manual',
-    afterLabel: 'Governance handoff',
-    after: 'Exportable',
-    result: 'CSV and PDF reports for audit workflows',
-  },
-  {
-    workflow: 'Cross-repo analytics',
-    beforeLabel: 'Pattern detection',
-    before: 'Siloed',
-    afterLabel: 'Pattern detection',
-    after: 'Shared trends',
-    result: 'Recurring vuln types across repositories',
-  },
-]
-
-const OUTCOMES = [
-  {
-    title: 'GitHub App posts inline review comments only on added diff lines',
-    stat: 'PR',
-    detail: 'review bot flow baked into the backend and dashboard',
-  },
-  {
-    title: 'Compliance dashboard maps findings directly to CWE and OWASP LLM categories',
-    stat: 'CWE',
-    detail: 'governance view already wired into the frontend',
-  },
-  {
-    title: 'PM analytics track blocked PRs, author leaderboards, and remediation deltas',
-    stat: 'PM',
-    detail: 'role-gated analytics for engineering leadership',
+    id: 'compliance',
+    title: 'Compliance exports for audit workflows',
+    description: 'Generate audit-ready CSV and PDF reports mapped to CWE, OWASP LLM Top 10, and internal standards. Track scan history, decisions, and remediation across teams.',
+    benefits: [
+      'CWE and OWASP LLM mapping',
+      'PDF and CSV export formats',
+      'Persistent scan history',
+      'Role-based access controls',
+    ],
+    cta: 'Learn more about Compliance',
+    visual: 'compliance-table',
   },
 ]
 
@@ -594,6 +561,146 @@ function TestimonialCard({ testimonial, reduced, delay }) {
   )
 }
 
+function FeatureShowcaseVisual({ type }) {
+  const visuals = {
+    'pr-comments': (
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-6 flex flex-col justify-center border border-white/10">
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600" />
+            <div className="flex-1">
+              <div className="h-2 bg-white/20 rounded w-24 mb-2" />
+              <div className="space-y-1">
+                <div className="h-1.5 bg-red-500/40 rounded w-full" />
+                <div className="h-1.5 bg-white/10 rounded w-5/6" />
+              </div>
+            </div>
+          </div>
+          <div className="border-l-2 border-red-500/50 pl-4 py-2">
+            <div className="text-[11px] text-red-400 font-mono">High: Potential prompt injection in user input</div>
+            <div className="text-[10px] text-white/50 font-mono mt-1">Evidence: {...user_input}</div>
+          </div>
+        </div>
+        <div className="mt-4 text-center text-white/40 text-xs">GitHub PR Review UI</div>
+      </div>
+    ),
+    'risk-chart': (
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-6 flex flex-col justify-center border border-white/10">
+        <div className="flex items-end justify-center gap-2 h-40">
+          <div className="w-8 h-20 bg-red-500/70 rounded" />
+          <div className="w-8 h-32 bg-orange-500/70 rounded" />
+          <div className="w-8 h-16 bg-yellow-500/70 rounded" />
+          <div className="w-8 h-10 bg-green-500/70 rounded" />
+        </div>
+        <div className="mt-6 grid grid-cols-4 gap-2 text-[10px] text-white/60">
+          <div className="text-center">Critical</div>
+          <div className="text-center">High</div>
+          <div className="text-center">Medium</div>
+          <div className="text-center">Low</div>
+        </div>
+        <div className="mt-4 text-center text-white/40 text-xs">Risk Distribution</div>
+      </div>
+    ),
+    'policy-yaml': (
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-4 flex flex-col justify-center border border-white/10 font-mono text-[10px]">
+        <div className="text-green-400/80 space-y-1">
+          <div><span className="text-white/60">version:</span> <span className="text-blue-400">1</span></div>
+          <div><span className="text-white/60">policies:</span></div>
+          <div className="ml-3"><span className="text-white/60">- name:</span> <span className="text-orange-400">prompt_injection</span></div>
+          <div className="ml-6"><span className="text-white/60">threshold:</span> <span className="text-blue-400">75</span></div>
+          <div className="ml-6"><span className="text-white/60">block_on:</span> <span className="text-orange-400">[critical]</span></div>
+          <div className="ml-3"><span className="text-white/60">- name:</span> <span className="text-orange-400">data_leakage</span></div>
+          <div className="ml-6"><span className="text-white/60">threshold:</span> <span className="text-blue-400">65</span></div>
+        </div>
+        <div className="mt-4 text-center text-white/40">.promptshield.yml</div>
+      </div>
+    ),
+    'compliance-table': (
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-4 flex flex-col justify-center border border-white/10">
+        <div className="text-[9px] text-white/50 space-y-2">
+          <div className="grid grid-cols-4 gap-2 font-mono font-semibold">
+            <div>Finding</div>
+            <div>CWE</div>
+            <div>Status</div>
+            <div>Date</div>
+          </div>
+          <div className="space-y-1">
+            <div className="grid grid-cols-4 gap-2 font-mono text-white/60">
+              <div>Prompt Inject</div>
+              <div>CWE-94</div>
+              <div className="text-red-400">Fixed</div>
+              <div>2026-04-18</div>
+            </div>
+            <div className="grid grid-cols-4 gap-2 font-mono text-white/60">
+              <div>Data Leak</div>
+              <div>CWE-200</div>
+              <div className="text-yellow-400">Review</div>
+              <div>2026-04-17</div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 text-center text-white/40 text-xs">Audit Export</div>
+      </div>
+    ),
+  }
+
+  return visuals[type] || visuals['pr-comments']
+}
+
+function FeatureShowcase({ feature, reduced, index }) {
+  const isEven = index % 2 === 0
+  const content = (
+    <Reveal reduced={reduced} delay={index * 0.1} className="h-full">
+      <div className="flex flex-col lg:gap-12 h-full">
+        <div className="flex-1 flex flex-col justify-center">
+          <h3 className="text-[28px] lg:text-[32px] font-semibold leading-[1.1] text-white mb-4">
+            {feature.title}
+          </h3>
+          <p className="text-[15px] leading-[1.6] text-white/75 mb-6">
+            {feature.description}
+          </p>
+          <div className="space-y-2 mb-8">
+            {feature.benefits.map((benefit) => (
+              <div key={benefit} className="flex items-start gap-3">
+                <div className="flex-shrink-0 h-1.5 w-1.5 rounded-full bg-blue-400 mt-2" />
+                <span className="text-[14px] text-white/80">{benefit}</span>
+              </div>
+            ))}
+          </div>
+          <a href="#" className="inline-flex items-center gap-2 text-[14px] font-semibold text-blue-400 hover:text-blue-300 transition-colors">
+            <span>{feature.cta}</span>
+            <ArrowRight className="h-4 w-4" />
+          </a>
+        </div>
+      </div>
+    </Reveal>
+  )
+
+  const visual = (
+    <Reveal reduced={reduced} delay={index * 0.1 + 0.05} className="h-full">
+      <div className="min-h-[400px] lg:min-h-[500px] w-full">
+        <FeatureShowcaseVisual type={feature.visual} />
+      </div>
+    </Reveal>
+  )
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center py-16 lg:py-20">
+      {isEven ? (
+        <>
+          <div>{visual}</div>
+          <div>{content}</div>
+        </>
+      ) : (
+        <>
+          <div>{content}</div>
+          <div>{visual}</div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function LandingPage({ onEnterDashboard, onEnterScan, onToneChange }) {
   const reduced = useReducedMotion()
 
@@ -691,113 +798,62 @@ export default function LandingPage({ onEnterDashboard, onEnterScan, onToneChang
         </div>
       </section>
 
-      <section id="proof" className="landing-phase-white px-4 py-6 sm:px-8 lg:px-12 lg:py-8">
-        <div className="mx-auto max-w-[1700px] overflow-hidden text-[#e9f3ff]">
-          <div className="grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-2">
-            {TESTIMONIALS.map((testimonial, index) => (
-              <TestimonialCard
-                key={testimonial.name}
-                testimonial={testimonial}
-                reduced={reduced}
-                delay={index * 0.08}
-              />
+      <section id="proof" className="landing-phase-white px-4 py-8 sm:px-8 lg:px-12 lg:py-12">
+        <div className="mx-auto max-w-[1400px] overflow-hidden">
+          <div className="space-y-4 lg:space-y-6">
+            {FEATURE_SHOWCASES.map((feature, index) => (
+              <FeatureShowcase key={feature.id} feature={feature} reduced={reduced} index={index} />
             ))}
           </div>
 
-          <Reveal reduced={reduced} className="app-panel mt-3 overflow-x-auto border-b border-transparent">
-            <div className="min-w-[920px] px-4 py-3 sm:px-6">
-              <div className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 px-4 py-2 text-[10px] uppercase tracking-[0.12em] text-[#84a2cc]">
-                <div />
-                <div>Before</div>
-                <div>With PromptShield</div>
-                <div>Result</div>
-              </div>
-              {RESULTS.map((row) => (
-                <div
-                  key={row.workflow}
-                  className="grid grid-cols-[1.9fr,0.55fr,0.55fr,0.75fr] gap-4 border-t border-white/8 px-4 py-3"
-                >
-                  <div>
-                    <div className="text-[14px] font-medium tracking-[-0.02em] text-[#f4f8ff]">
-                      {row.workflow}
-                    </div>
-                  </div>
-                  <div className="text-[12px] leading-[1.35] text-[#88a2ca]">
-                    <div className="text-[10px] uppercase tracking-[0.1em]">{row.beforeLabel}</div>
-                    <div className="mt-1 text-[#c8d8f0]">{row.before}</div>
-                  </div>
-                  <div className="text-[12px] leading-[1.35] text-[#88a2ca]">
-                    <div className="text-[10px] uppercase tracking-[0.1em]">{row.afterLabel}</div>
-                    <div className="mt-1 font-medium text-[#eff6ff]">{row.after}</div>
-                  </div>
-                  <div className="text-[12px] leading-[1.35] text-[#6cabff]">{row.result}</div>
+          <div id="security" className="mt-20 border-t border-white/10 pt-12">
+            <div className="grid gap-8 lg:grid-cols-[1.3fr,1fr] lg:gap-12">
+              <Reveal reduced={reduced}>
+                <div className="flex items-center gap-2.5 text-[18px] font-medium tracking-[-0.03em] text-[#eff6ff]">
+                  <ShieldCheck className="h-5 w-5 text-[#eff6ff]" />
+                  <span>Enterprise-grade security</span>
                 </div>
-              ))}
-            </div>
-          </Reveal>
-
-          <div className="mt-3 grid gap-4 border-b border-white/10 pb-4 lg:grid-cols-3">
-            {OUTCOMES.map((outcome, index) => (
-              <Reveal key={outcome.title} reduced={reduced} delay={index * 0.08} className="h-full">
-                <article className="app-panel flex h-full flex-col px-4 py-4">
-                  <h3 className="max-w-[24ch] text-[14px] leading-[1.3] tracking-[-0.02em] text-[#f5f8ff]">
-                    {outcome.title}
-                  </h3>
-                  <div className="mt-6 text-[24px] font-medium tracking-[-0.04em] text-[#6cabff]">
-                    {outcome.stat}
-                  </div>
-                  <div className="mt-1 text-[11px] text-[#8eaad2]">{outcome.detail}</div>
-                </article>
+                <p className="mt-3 max-w-[64ch] text-[15px] leading-[1.6] text-[#93add4]">
+                  Your data stays yours. PromptShield keeps review artifacts isolated, preserves auditability, and never trains on your private releases.
+                </p>
+                <button className="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold tracking-[-0.02em] text-[#d6e5ff]">
+                  <span>Security &amp; Trust Center</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
               </Reveal>
-            ))}
-          </div>
 
-          <div id="security" className="grid gap-8 px-6 py-7 sm:px-8 lg:grid-cols-[1.3fr,1fr] lg:gap-12">
-            <Reveal reduced={reduced}>
-              <div className="flex items-center gap-2.5 text-[18px] font-medium tracking-[-0.03em] text-[#eff6ff]">
-                <ShieldCheck className="h-5 w-5 text-[#eff6ff]" />
-                <span>Enterprise-grade security</span>
-              </div>
-              <p className="mt-3 max-w-[64ch] text-[15px] leading-[1.6] text-[#93add4]">
-                Your data stays yours. PromptShield keeps review artifacts isolated, preserves auditability, and never trains on your private releases.
-              </p>
-              <button className="mt-4 inline-flex items-center gap-2 text-[12px] font-semibold tracking-[-0.02em] text-[#d6e5ff]">
-                <span>Security &amp; Trust Center</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </Reveal>
+              <Reveal reduced={reduced} delay={0.08}>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                  {SECURITY_BADGES.map((badge) => (
+                    <div
+                      key={badge}
+                      className="app-panel-soft grid min-h-[56px] place-items-center px-3 text-center text-[11px] font-semibold tracking-[0.04em] text-[#e7f2ff]"
+                    >
+                      {badge}
+                    </div>
+                  ))}
+                </div>
+              </Reveal>
+            </div>
 
-            <Reveal reduced={reduced} delay={0.08}>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                {SECURITY_BADGES.map((badge) => (
-                  <div
-                    key={badge}
-                    className="app-panel-soft grid min-h-[56px] place-items-center px-3 text-center text-[11px] font-semibold tracking-[0.04em] text-[#e7f2ff]"
-                  >
-                    {badge}
+            <Reveal reduced={reduced} className="border-t border-white/10 px-5 py-3 sm:px-8 mt-8">
+              <div className="grid gap-3 text-[11px] text-[#93add4] sm:grid-cols-2 xl:grid-cols-6">
+                {[
+                  'Audited & tested',
+                  'Fine-grained access controls',
+                  'Modern secure practices',
+                  'Audit logs across every workflow',
+                  'No training on your data',
+                  'Regional deployment options',
+                ].map((item) => (
+                  <div key={item} className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#7eb5ff]" />
+                    <span>{item}</span>
                   </div>
                 ))}
               </div>
             </Reveal>
           </div>
-
-          <Reveal reduced={reduced} className="border-t border-white/10 px-5 py-3 sm:px-8">
-            <div className="grid gap-3 text-[11px] text-[#93add4] sm:grid-cols-2 xl:grid-cols-6">
-              {[
-                'Audited & tested',
-                'Fine-grained access controls',
-                'Modern secure practices',
-                'Audit logs across every workflow',
-                'No training on your data',
-                'Regional deployment options',
-              ].map((item) => (
-                <div key={item} className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#7eb5ff]" />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          </Reveal>
         </div>
       </section>
 
