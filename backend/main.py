@@ -57,6 +57,7 @@ from policy_engine import simulate_policy, save_policy_version, list_policy_vers
 from sbom import generate_sbom
 from drift import classify_findings, update_baseline
 from risk_scoring import router as risk_scoring_router
+from agent_handoff import router as agent_handoff_router
 
 try:
     from reportlab.lib.pagesizes import letter
@@ -1406,6 +1407,7 @@ def health():
 app.include_router(github_router)
 app.include_router(graph_router)
 app.include_router(risk_scoring_router)
+app.include_router(agent_handoff_router)
 app.include_router(workflow_router)
 app.include_router(enterprise_router)
 app.include_router(auth_router)

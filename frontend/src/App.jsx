@@ -8,6 +8,7 @@ import CompliancePage from './pages/CompliancePage.jsx'
 import PMPage from './pages/PMPage.jsx'
 import PolicyPage from './pages/PolicyPage.jsx'
 import EnterprisePage from './pages/EnterprisePage.jsx'
+import AgentHandoffPage from './pages/AgentHandoffPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
 import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
@@ -22,6 +23,7 @@ const WORKSPACE_NAV = [
   { id: 'pm', label: 'PM' },
   { id: 'policy', label: 'Policy' },
   { id: 'enterprise', label: 'Enterprise' },
+  { id: 'agent', label: 'Agent Handoff' },
   { id: 'scan', label: 'Scan' },
 ]
 
@@ -81,9 +83,32 @@ function AppShell() {
           throw new Error(detail.detail || `Scan failed (${r.status})`)
         }
         const data = await r.json()
-        setReport(data)
-        setView('report')
-        refreshHistory()
+
+// ML risk scoring
+try {
+  const mlR = await fetchWithTimeout(`${API}/api/risk-scoring`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repos: [{ repo: 'scanned-input', prompts: [text] }]
+    }),
+  }, 10000)
+  if (mlR.ok) {
+    const mlData = await mlR.json()
+    const top = mlData.ranked_repos?.[0]
+    if (top) {
+      data.ml_risk_score = top.avg_risk_score
+      data.ml_priority = top.priority
+      data.ml_flagged = top.flagged_prompts
+    }
+  }
+} catch {
+  // non-blocking, don't fail the scan
+}
+
+setReport(data)
+setView('report')
+refreshHistory()
       } catch (e) {
         setError(
           asNetworkErrorMessage(e, 'Scan failed. Is the backend running on port 8000?')
@@ -241,7 +266,11 @@ function AppShell() {
           {view === 'pm' && <PMPage onSignIn={goLogin} />}
           {view === 'policy' && <PolicyPage />}
           {view === 'enterprise' && <EnterprisePage />}
-          {view === 'login' && <LoginPage onLoggedIn={() => setView('pm')} />}
+
+          {view === 'agent' && <AgentHandoffPage />}
+          {view === 'login' && (
+            <LoginPage onLoggedIn={() => setView('pm')} />
+          )}
           {view === 'report' && (
             <ReportPage report={report} history={history} onNewScan={() => setView('scan')} />
           )}

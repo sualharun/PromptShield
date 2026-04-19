@@ -57,12 +57,7 @@ export default function ReportPage({ report, history = [], onNewScan }) {
 
   const grouped = useMemo(() => {
     const order = ['critical', 'high', 'medium', 'low']
-    const buckets = {
-      critical: [],
-      high: [],
-      medium: [],
-      low: [],
-    }
+    const buckets = { critical: [], high: [], medium: [], low: [] }
     filtered.forEach((f) => {
       const sev = (f.severity || 'low').toLowerCase()
       if (buckets[sev]) buckets[sev].push(f)
@@ -123,11 +118,20 @@ export default function ReportPage({ report, history = [], onNewScan }) {
         return next
       })
     } catch {
-      // swallow — user can retry
+      // swallow
     } finally {
       setSuppressing((s) => ({ ...s, [key]: false }))
     }
   }
+
+  const summaryText = report.total_count === 0
+    ? 'This prompt looks clean. No threats detected across static and AI analysis.'
+    : counts.critical > 0
+    ? `We found ${counts.critical} critical issue${counts.critical > 1 ? 's' : ''} that could allow an attacker to compromise your AI system. Block this prompt before it ships.`
+    : `We found ${report.total_count} potential issue${report.total_count > 1 ? 's' : ''}. Review before deploying this prompt to production.`
+
+  const summaryBorder = counts.critical > 0 ? '#a2191f' : report.total_count === 0 ? '#198038' : '#b8470c'
+  const summaryBg = counts.critical > 0 ? '#fff1f1' : report.total_count === 0 ? '#defbe6' : '#fff8f1'
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-8">
@@ -140,8 +144,7 @@ export default function ReportPage({ report, history = [], onNewScan }) {
             Vulnerability assessment
           </h1>
           <p className="mt-1 text-[13px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-            {fmt(report.created_at)} · {report.static_count} static ·{' '}
-            {report.ai_count} AI
+            {fmt(report.created_at)} · {report.static_count} static · {report.ai_count} AI
           </p>
         </div>
         <button
@@ -152,40 +155,27 @@ export default function ReportPage({ report, history = [], onNewScan }) {
         </button>
       </div>
 
+      <section className="mb-6 border-l-4 px-5 py-4" style={{ borderColor: summaryBorder, background: summaryBg }}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: summaryBorder }}>What this means</p>
+        <p className="mt-1 text-[15px]" style={{ color: '#1c1c1c' }}>{summaryText}</p>
+      </section>
+
       <section className="grid gap-px border border-carbon-border bg-carbon-border md:grid-cols-[260px,1fr] dark:border-ibm-gray-80 dark:bg-ibm-gray-80">
         <div className="flex items-center justify-center bg-white p-6 dark:bg-ibm-gray-90">
           <RiskGauge score={report.risk_score} size={180} />
         </div>
         <div className="grid gap-px bg-carbon-border md:grid-cols-4 dark:bg-ibm-gray-80">
           {[
-            { label: 'Total findings', value: report.total_count, mono: true },
-            {
-              label: 'Critical',
-              value: counts.critical,
-              color: '#a2191f',
-              mono: true,
-            },
-            {
-              label: 'High',
-              value: counts.high,
-              color: '#b8470c',
-              mono: true,
-            },
-            {
-              label: 'Medium + Low',
-              value: counts.medium + counts.low,
-              color: '#525252',
-              mono: true,
-            },
+            { label: 'Total findings', value: report.total_count },
+            { label: 'Critical', value: counts.critical, color: '#a2191f' },
+            { label: 'High', value: counts.high, color: '#b8470c' },
+            { label: 'Medium + Low', value: counts.medium + counts.low, color: '#525252' },
           ].map((kpi) => (
             <div key={kpi.label} className="bg-white px-5 py-5 dark:bg-ibm-gray-90">
               <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
                 {kpi.label}
               </div>
-              <div
-                className="mt-2 font-light text-3xl tabular-nums"
-                style={{ color: kpi.color || 'var(--carbon-text)' }}
-              >
+              <div className="mt-2 font-light text-3xl tabular-nums" style={{ color: kpi.color || 'var(--carbon-text)' }}>
                 {kpi.value}
               </div>
             </div>
@@ -204,6 +194,32 @@ export default function ReportPage({ report, history = [], onNewScan }) {
       </section>
 
       <ScoreBreakdown breakdown={report.score_breakdown} />
+
+      {report.ml_risk_score !== undefined && (
+        <section className="mt-4 grid gap-px border border-carbon-border bg-carbon-border md:grid-cols-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-80">
+          <div className="bg-white px-5 py-4 dark:bg-ibm-gray-90">
+            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">ML Risk Score</div>
+            <div className="mt-2 font-light text-3xl tabular-nums" style={{
+              color: report.ml_risk_score >= 0.8 ? '#a2191f' : report.ml_risk_score >= 0.6 ? '#b8470c' : report.ml_risk_score >= 0.3 ? '#8a6800' : '#198038'
+            }}>
+              {Math.round(report.ml_risk_score * 100)}%
+            </div>
+          </div>
+          <div className="bg-white px-5 py-4 dark:bg-ibm-gray-90">
+            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">ML Priority</div>
+            <div className="mt-2 font-light text-3xl tabular-nums" style={{
+              color: report.ml_priority === 'CRITICAL' ? '#a2191f' : report.ml_priority === 'HIGH' ? '#b8470c' : report.ml_priority === 'MEDIUM' ? '#8a6800' : '#198038'
+            }}>
+              {report.ml_priority}
+            </div>
+          </div>
+          <div className="bg-white px-5 py-4 dark:bg-ibm-gray-90">
+            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">ML Classifier</div>
+            <div className="mt-2 text-[12px] text-carbon-text-secondary dark:text-ibm-gray-30">TF-IDF + Logistic Regression</div>
+            <div className="mt-1 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">97.2% F1 · 151 labeled prompts</div>
+          </div>
+        </section>
+      )}
 
       <section className="mt-8">
         <div className="inline-flex border border-carbon-border bg-white text-[11px] font-semibold uppercase tracking-[0.08em] dark:border-ibm-gray-80 dark:bg-ibm-gray-90">
@@ -229,92 +245,74 @@ export default function ReportPage({ report, history = [], onNewScan }) {
       </section>
 
       {activePanel === 'findings' && (
-      <section className="mt-6">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
-            Findings
-          </h2>
-          <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-            Sorted by severity, then confidence
-          </span>
-        </div>
-
-        <FindingsToolbar
-          counts={counts}
-          activeSeverities={activeSeverities}
-          onToggleSeverity={toggleSeverity}
-          onClear={clearFilters}
-          query={query}
-          onQuery={setQuery}
-          total={report.findings.length}
-          shown={filtered.length}
-        />
-
-        {report.findings.length === 0 ? (
-          <div className="mt-3 border border-ibm-green-60 bg-[#defbe6] px-5 py-6 text-center dark:bg-ibm-green-60/20">
-            <p className="text-base font-semibold text-ibm-green-60 dark:text-ibm-green-50">
-              No vulnerabilities detected
-            </p>
-            <p className="mt-1 text-sm text-carbon-text-secondary dark:text-ibm-gray-30">
-              Static and AI passes both came back clean.
-            </p>
+        <section className="mt-6">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Findings</h2>
+            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">Sorted by severity, then confidence</span>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="mt-3 border border-carbon-border bg-carbon-layer px-5 py-6 text-center text-sm text-carbon-text-secondary dark:border-ibm-gray-80 dark:bg-ibm-gray-100 dark:text-ibm-gray-30">
-            No findings match the current filters.
-          </div>
-        ) : (
-          <div className="mt-3 space-y-6">
-            {grouped.map((group) => (
-              <div key={group.sev} className="border border-carbon-border bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
-                <div className="flex items-center justify-between border-b border-carbon-border px-4 py-2 dark:border-ibm-gray-80">
-                  <div className="flex items-center gap-2">
-                    <SeverityBadge severity={group.sev} count={group.items.length} dot />
-                    <span className="text-[11px] uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
-                      severity group
+          <FindingsToolbar
+            counts={counts}
+            activeSeverities={activeSeverities}
+            onToggleSeverity={toggleSeverity}
+            onClear={clearFilters}
+            query={query}
+            onQuery={setQuery}
+            total={report.findings.length}
+            shown={filtered.length}
+          />
+          {report.findings.length === 0 ? (
+            <div className="mt-3 border border-ibm-green-60 bg-[#defbe6] px-5 py-6 text-center dark:bg-ibm-green-60/20">
+              <p className="text-base font-semibold text-ibm-green-60 dark:text-ibm-green-50">No vulnerabilities detected</p>
+              <p className="mt-1 text-sm text-carbon-text-secondary dark:text-ibm-gray-30">Static and AI passes both came back clean.</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="mt-3 border border-carbon-border bg-carbon-layer px-5 py-6 text-center text-sm text-carbon-text-secondary dark:border-ibm-gray-80 dark:bg-ibm-gray-100 dark:text-ibm-gray-30">
+              No findings match the current filters.
+            </div>
+          ) : (
+            <div className="mt-3 space-y-6">
+              {grouped.map((group) => (
+                <div key={group.sev} className="border border-carbon-border bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
+                  <div className="flex items-center justify-between border-b border-carbon-border px-4 py-2 dark:border-ibm-gray-80">
+                    <div className="flex items-center gap-2">
+                      <SeverityBadge severity={group.sev} count={group.items.length} dot />
+                      <span className="text-[11px] uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">severity group</span>
+                    </div>
+                    <span className="font-mono text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+                      {group.items.length} item{group.items.length === 1 ? '' : 's'}
                     </span>
                   </div>
-                  <span className="font-mono text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-                    {group.items.length} item{group.items.length === 1 ? '' : 's'}
-                  </span>
+                  <div className="space-y-2 p-2">
+                    {group.items.map((f, i) => {
+                      const reportIndex = report.findings.indexOf(f)
+                      const overlayed = suppressedSigs.has(f.signature) ? { ...f, suppressed: true } : f
+                      const supKey = f.signature || `${f.type}-${f.title}`
+                      return (
+                        <FindingCard
+                          key={`${group.sev}-${f.type}-${reportIndex}-${i}`}
+                          finding={overlayed}
+                          index={i}
+                          onSuggestFix={() => requestSuggestion(f, reportIndex)}
+                          suggesting={!!suggesting[`${reportIndex}-${f.type}`]}
+                          suggestion={suggestions[`${reportIndex}-${f.type}`] || ''}
+                          onSuppress={suppressFinding}
+                          suppressing={!!suppressing[supKey]}
+                        />
+                      )
+                    })}
+                  </div>
                 </div>
-                <div className="space-y-2 p-2">
-                  {group.items.map((f, i) => {
-                    const reportIndex = report.findings.indexOf(f)
-                    const overlayed = suppressedSigs.has(f.signature)
-                      ? { ...f, suppressed: true }
-                      : f
-                    const supKey = f.signature || `${f.type}-${f.title}`
-                    return (
-                      <FindingCard
-                        key={`${group.sev}-${f.type}-${reportIndex}-${i}`}
-                        finding={overlayed}
-                        index={i}
-                        onSuggestFix={() => requestSuggestion(f, reportIndex)}
-                        suggesting={!!suggesting[`${reportIndex}-${f.type}`]}
-                        suggestion={suggestions[`${reportIndex}-${f.type}`] || ''}
-                        onSuppress={suppressFinding}
-                        suppressing={!!suppressing[supKey]}
-                      />
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {activePanel === 'graph' && (
         <section className="mt-6">
           <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
-              Dependency graph analysis
-            </h2>
-            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-              Hidden supply-chain paths and blast radius
-            </span>
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Dependency graph analysis</h2>
+            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">Hidden supply-chain paths and blast radius</span>
           </div>
           <PanelErrorBoundary>
             <DependencyGraph scanId={report.id} />
@@ -325,39 +323,27 @@ export default function ReportPage({ report, history = [], onNewScan }) {
       {activePanel === 'attacker' && (
         <section className="mt-6">
           <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
-              Attacker simulation
-            </h2>
-            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-              Proactive exploit-path analysis from this report
-            </span>
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Attacker simulation</h2>
+            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">Proactive exploit-path analysis from this report</span>
           </div>
           <AttackerSimulationPanel scanId={report.id} />
         </section>
       )}
 
       <section className="mt-10">
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
-          Analytics
-        </h2>
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Analytics</h2>
         <div className="grid gap-px border border-carbon-border bg-carbon-border md:grid-cols-2 dark:border-ibm-gray-80 dark:bg-ibm-gray-80">
           <div className="bg-white p-5 dark:bg-ibm-gray-90">
-            <h3 className="mb-2 text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">
-              Findings by severity
-            </h3>
+            <h3 className="mb-2 text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">Findings by severity</h3>
             <SeverityBar findings={report.findings} />
           </div>
           <div className="bg-white p-5 dark:bg-ibm-gray-90">
-            <h3 className="mb-2 text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">
-              Vulnerability category radar
-            </h3>
+            <h3 className="mb-2 text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">Vulnerability category radar</h3>
             <CategoryRadar findings={report.findings} />
           </div>
           {history.length > 1 && (
             <div className="bg-white p-5 md:col-span-2 dark:bg-ibm-gray-90">
-              <h3 className="mb-2 text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">
-                Risk score trend
-              </h3>
+              <h3 className="mb-2 text-[13px] font-semibold text-carbon-text dark:text-ibm-gray-10">Risk score trend</h3>
               <TrendLine scans={history} />
             </div>
           )}
@@ -365,15 +351,11 @@ export default function ReportPage({ report, history = [], onNewScan }) {
       </section>
 
       <section className="mt-10">
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
-          Scanned input
-        </h2>
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Scanned input</h2>
         <pre className="max-h-96 overflow-auto border border-carbon-border bg-ibm-gray-100 p-4 font-mono text-[12px] leading-relaxed text-ibm-gray-10 scrollbar-thin dark:border-ibm-gray-80">
           {report.input_text}
         </pre>
-        <p className="mt-2 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
-          Secrets and PII are redacted before persistence.
-        </p>
+        <p className="mt-2 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">Secrets and PII are redacted before persistence.</p>
       </section>
     </div>
   )
