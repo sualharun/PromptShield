@@ -51,11 +51,14 @@ from cross_repo_router import router as cross_repo_router
 from suppression import annotate as annotate_suppressions, suppressed_signatures
 from github_webhook import router as github_router
 from graph_router import router as graph_router
+from agent_graph_router import router as agent_graph_router
 from workflow_router import router as workflow_router
 from enterprise_router import router as enterprise_router
 from org_router import router as org_router
 from ops_router import router as ops_router
 from drift_router import router as drift_router
+from risk_scoring import router as risk_scoring_router
+from agent_handoff import router as agent_handoff_router
 from observability import metrics, slo_tracker, tracer
 from job_queue import job_queue
 
@@ -776,48 +779,66 @@ def run_scan(req: ScanRequest, request: Request):
         logger.warning("vector enrichment skipped: %s", e, extra={"event": "vector_skip"})
 
     persisted_text = redact(text) if settings.REDACT_PERSISTED_INPUT else text
-    doc = repos.insert_scan(
-        {
-            "input_text": persisted_text,
-            "risk_score": score,
-            "findings": merged,
-            "counts": {
-                "static": len(static_results),
-                "ai": len(ai_results),
-                "total": len(merged),
+    # Try to persist, but if Mongo is unavailable, return stateless response
+    try:
+        doc = repos.insert_scan(
+            {
+                "input_text": persisted_text,
+                "risk_score": score,
+                "findings": merged,
+                "counts": {
+                    "static": len(static_results),
+                    "ai": len(ai_results),
+                    "total": len(merged),
+                },
+                "score_breakdown": breakdown,
+                "source": "web",
+                "llm_targets": list(targets or []),
+                "semantic_matches": semantic_matches,
+                "embedding": scan_embedding,
+            }
+        )
+        _log_audit(
+            actor="anonymous",
+            action="SCAN_COMPLETED",
+            source="web",
+            details={
+                "risk_score": score,
+                "total_findings": len(merged),
+                "language": detected_language,
+                "semantic_matches": len(semantic_matches),
             },
-            "score_breakdown": breakdown,
-            "source": "web",
-            "llm_targets": list(targets or []),
-            "semantic_matches": semantic_matches,
-            "embedding": scan_embedding,
-        }
-    )
-
-    _log_audit(
-        actor="anonymous",
-        action="SCAN_COMPLETED",
-        source="web",
-        details={
-            "risk_score": score,
-            "total_findings": len(merged),
-            "language": detected_language,
-            "semantic_matches": len(semantic_matches),
-        },
-        client_ip=key,
-        scan_id=str(doc["_id"]),
-    )
-    _save_risk_snapshot(source="web")
-
-    logger.info(
-        "scan complete",
-        extra={
-            "event": "scan_complete",
-            "duration_ms": duration_ms,
-            "client_ip": key,
-        },
-    )
-    return _report_from_doc(doc)
+            client_ip=key,
+            scan_id=str(doc["_id"]),
+        )
+        _save_risk_snapshot(source="web")
+        logger.info(
+            "scan complete",
+            extra={
+                "event": "scan_complete",
+                "duration_ms": duration_ms,
+                "client_ip": key,
+            },
+        )
+        return _report_from_doc(doc)
+    except Exception as e:
+        logger.warning(f"Persistence failed, running in stateless mode: {e}")
+        # Return a ScanReport directly
+        from uuid import uuid4
+        now = datetime.now(timezone.utc).isoformat()
+        return ScanReport(
+            id=str(uuid4()),
+            created_at=now,
+            input_text=text,
+            risk_score=score,
+            findings=merged,
+            static_count=len(static_results),
+            ai_count=len(ai_results),
+            total_count=len(merged),
+            score_breakdown=breakdown,
+            author_login=None,
+            llm_targets=list(targets or []),
+        )
 
 
 @app.get("/api/scans", response_model=List[ScanSummary])
@@ -911,9 +932,12 @@ def github_dashboard():
 
     severity_totals, type_counter, finding_total = _severity_and_type_counts(all_github)
     lang_counter: Counter = Counter()
+    agent_findings_count = 0
     for s in all_github:
         for f in _findings(s):
             lang_counter[(f.get("language") or "mixed").lower()] += 1
+            if (f.get("type", "").startswith("AGENT_") or f.get("source") == "agent_analysis"):
+                agent_findings_count += 1
     top_types = [
         FindingTypeStat(type=t, count=c)
         for t, c in type_counter.most_common(6)
@@ -921,7 +945,24 @@ def github_dashboard():
     avg_findings_per_pr = round(finding_total / total, 2) if total else 0.0
     daily = _daily_velocity(all_github, threshold)
 
-    return GithubDashboard(
+    # Validation gap: prompts missing key defenses (delimiters, refusal, input labeling)
+    from jailbreak_engine import simulate as jailbreak_simulate_structural
+    recent_prompts = [s.get("input_text") or "" for s in recent_rows]
+    missing_defenses = 0
+    checked = 0
+    for prompt in recent_prompts:
+        try:
+            report = jailbreak_simulate_structural(prompt)
+            defenses = report.get("defenses", {})
+            # If any key defense is missing, count as missing
+            if not (defenses.get("has_delimiters") and defenses.get("has_refusal_instruction") and defenses.get("has_input_labeling")):
+                missing_defenses += 1
+            checked += 1
+        except Exception:
+            continue
+    validation_gap_pct = round((missing_defenses / checked) * 100, 1) if checked else 0.0
+
+    dashboard = GithubDashboard(
         total_pr_scans=total,
         gate_failures=gate_failures,
         repos_covered=len(repos_set),
@@ -945,6 +986,10 @@ def github_dashboard():
             for k, v in lang_counter.most_common()
         ],
     )
+    dashboard_dict = dashboard.dict()
+    dashboard_dict["agent_findings_count"] = agent_findings_count
+    dashboard_dict["validation_gap_pct"] = validation_gap_pct
+    return dashboard_dict
 
 
 @app.get("/api/dashboard/github/export.csv")
@@ -1476,6 +1521,7 @@ def health():
 
 app.include_router(github_router)
 app.include_router(graph_router)
+app.include_router(agent_graph_router)
 app.include_router(risk_scoring_router)
 app.include_router(agent_handoff_router)
 app.include_router(workflow_router)

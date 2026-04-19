@@ -6,6 +6,7 @@ import SeverityBadge from '../components/SeverityBadge.jsx'
 import FindingsToolbar from '../components/FindingsToolbar.jsx'
 import ScoreBreakdown from '../components/ScoreBreakdown.jsx'
 import DependencyGraph from '../components/DependencyGraph.jsx'
+import AgentGraph from '../components/AgentGraph.jsx'
 import AttackerSimulationPanel from '../components/AttackerSimulationPanel.jsx'
 import SimilarScansPanel from '../components/SimilarScansPanel.jsx'
 import PanelErrorBoundary from '../components/PanelErrorBoundary.jsx'
@@ -237,6 +238,12 @@ export default function ReportPage({ report, history = [], onNewScan }) {
             Dependency graph
           </button>
           <button
+            className={`border-l border-carbon-border px-3 py-2 transition-colors dark:border-ibm-gray-80 ${activePanel === 'agent-graph' ? 'bg-carbon-layer text-carbon-text dark:bg-ibm-gray-100 dark:text-ibm-gray-10' : 'text-carbon-text-tertiary dark:text-ibm-gray-40'}`}
+            onClick={() => setActivePanel('agent-graph')}
+          >
+            Agent attack surface
+          </button>
+          <button
             className={`border-l border-carbon-border px-3 py-2 transition-colors dark:border-ibm-gray-80 ${activePanel === 'attacker' ? 'bg-carbon-layer text-carbon-text dark:bg-ibm-gray-100 dark:text-ibm-gray-10' : 'text-carbon-text-tertiary dark:text-ibm-gray-40'}`}
             onClick={() => setActivePanel('attacker')}
           >
@@ -324,6 +331,18 @@ export default function ReportPage({ report, history = [], onNewScan }) {
           </div>
           <PanelErrorBoundary>
             <DependencyGraph scanId={report.id} />
+          </PanelErrorBoundary>
+        </section>
+      )}
+
+      {activePanel === 'agent-graph' && (
+        <section className="mt-6">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">Agent attack surface</h2>
+            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">Tool definitions, dangerous sinks, and attack chains</span>
+          </div>
+          <PanelErrorBoundary>
+            <AgentGraph scanId={report.id} />
           </PanelErrorBoundary>
         </section>
       )}

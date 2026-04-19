@@ -296,13 +296,39 @@ function Reveal({ children, className = '', delay = 0, reduced }) {
   )
 }
 
+function FloatIn({ children, className = '', delay = 0, reduced }) {
+  return (
+    <motion.div
+      className={className}
+      initial={reduced ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 60, scale: 0.92 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={
+        reduced
+          ? { duration: 0 }
+          : {
+              type: 'spring',
+              damping: 22,
+              stiffness: 90,
+              mass: 0.8,
+              delay,
+            }
+      }
+    >
+      {children}
+    </motion.div>
+  )
+}
+
 export default function LandingPage({ onEnterDashboard }) {
   const reduced = useReducedMotion()
   const [openMenu, setOpenMenu] = useState(null)
   const [demoStep, setDemoStep] = useState(0)
   const [demoRunId, setDemoRunId] = useState(1)
   const [demoRunning, setDemoRunning] = useState(true)
+  const [scrolledPastHero, setScrolledPastHero] = useState(false)
   const navRef = useRef(null)
+  const heroRef = useRef(null)
   const activeMenu = NAV_DROPDOWNS.find((item) => item.key === openMenu) || null
 
   const visibleLines = useMemo(
@@ -337,6 +363,21 @@ export default function LandingPage({ onEnterDashboard }) {
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onEscape)
     }
+  }, [])
+
+  useEffect(() => {
+    const onScroll = () => {
+      const heroEl = heroRef.current
+      if (!heroEl) {
+        setScrolledPastHero(window.scrollY > 80)
+        return
+      }
+      const heroBottom = heroEl.getBoundingClientRect().bottom
+      setScrolledPastHero(heroBottom < 64)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
   useEffect(() => {
@@ -380,118 +421,165 @@ export default function LandingPage({ onEnterDashboard }) {
 
   return (
     <div className="ibm-landing min-h-screen bg-[#f3f1ea] text-[#16213e]">
-      <section className="border-b border-[#de715d]/40 bg-[#16213e] text-white">
-        <div className="mx-auto max-w-[1280px] px-6 pb-18 pt-6 lg:px-10">
-          <header className="relative z-30 rounded-[2px] border border-[#de715d]/55 bg-[#16213e] text-white shadow-[0_20px_48px_rgba(9,16,34,0.22)]">
-            <div
-              ref={navRef}
-              className="relative flex flex-wrap items-center gap-4 px-5 py-4 lg:flex-nowrap lg:px-7"
+      {/* ── Sticky header ─────────────────────────────────────────────── */}
+      <header
+        className="fixed left-0 right-0 top-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{
+          backgroundColor: scrolledPastHero ? 'rgba(243,241,234,0.82)' : 'rgba(22,33,62,0.60)',
+          backdropFilter: 'saturate(180%) blur(20px)',
+          WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+          borderBottom: scrolledPastHero ? '1px solid rgba(222,113,93,0.18)' : '1px solid transparent',
+        }}
+      >
+        <div className="mx-auto max-w-[1280px] px-6 lg:px-10">
+          <div
+            ref={navRef}
+            className={`relative flex items-center gap-4 rounded-[2px] py-3 transition-all duration-500 lg:flex-nowrap ${
+              scrolledPastHero
+                ? ''
+                : 'my-2 border border-[#de715d]/50 px-5'
+            }`}
+          >
+            <button
+              onClick={() => scrollToSection('hero', reduced)}
+              className="flex items-center gap-3 text-left"
             >
-              <button
-                onClick={() => scrollToSection('hero', reduced)}
-                className="flex items-center gap-3 text-left"
+              <span
+                className={`text-[22px] font-semibold tracking-[-0.04em] transition-colors duration-500 ${
+                  scrolledPastHero ? 'text-[#16213e]' : 'text-white'
+                }`}
+                style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
               >
-                <span
-                  className="text-[22px] font-semibold tracking-[-0.04em]"
-                  style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
-                >
-                  PromptShield
-                </span>
-              </button>
+                PromptShield
+              </span>
+            </button>
 
-              <nav className="flex flex-wrap items-center gap-1 text-[14px] text-white/82 lg:ml-12 lg:flex-1 lg:justify-center">
-                {NAV_DROPDOWNS.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => setOpenMenu((current) => (current === item.key ? null : item.key))}
-                    className="flex items-center gap-2 rounded-[2px] px-4 py-2 transition hover:bg-white/8 hover:text-white"
-                    aria-expanded={openMenu === item.key}
-                    aria-haspopup="true"
+            <nav className={`flex flex-wrap items-center gap-1 text-[14px] transition-colors duration-500 lg:ml-12 lg:flex-1 lg:justify-center ${
+              scrolledPastHero ? 'text-[#16213e]' : 'text-white'
+            }`}>
+              {NAV_DROPDOWNS.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => setOpenMenu((current) => (current === item.key ? null : item.key))}
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 transition-all duration-200 ${
+                    scrolledPastHero
+                      ? 'hover:bg-[#16213e]/6'
+                      : 'hover:bg-white/12'
+                  }`}
+                  aria-expanded={openMenu === item.key}
+                  aria-haspopup="true"
+                >
+                  <span>{item.label}</span>
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-300 ${openMenu === item.key ? 'rotate-180' : ''}`} />
+                </button>
+              ))}
+
+              {/* ── Apple-style dropdown ───────────────────────────────── */}
+              <AnimatePresence>
+                {activeMenu && (
+                  <motion.div
+                    initial={reduced ? false : { opacity: 0, y: -8, scale: 0.96 }}
+                    animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+                    exit={reduced ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.97 }}
+                    transition={
+                      reduced
+                        ? { duration: 0 }
+                        : { type: 'spring', damping: 26, stiffness: 280, mass: 0.7 }
+                    }
+                    className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-[12px] border border-[#d6d4cf] bg-white text-[#16213e] shadow-[0_24px_80px_rgba(22,33,62,0.22),0_0_0_1px_rgba(0,0,0,0.04)]"
                   >
-                    <span>{item.label}</span>
-                    <ChevronDown className={`h-4 w-4 transition ${openMenu === item.key ? 'rotate-180' : ''}`} />
-                  </button>
-                ))}
-                <AnimatePresence>
-                  {activeMenu && (
-                    <motion.div
-                      initial={reduced ? false : { opacity: 0, y: 10 }}
-                      animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
-                      exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
-                      transition={{ duration: reduced ? 0 : 0.18 }}
-                      className="absolute left-5 right-5 top-[calc(100%+18px)] z-40 w-auto rounded-[2px] border border-[#de715d]/45 bg-[#f5f3ee] text-[#16213e] shadow-[0_32px_80px_rgba(9,16,34,0.26)] lg:left-7 lg:right-7"
-                    >
-                      <div className="grid gap-0 lg:grid-cols-[1fr_1fr_320px]">
-                        {activeMenu.columns.map((column, index) => (
-                          <div
-                            key={column.heading}
-                            className={`border-b border-[#d6d4cf] p-6 lg:border-b-0 ${
-                              index < activeMenu.columns.length - 1 ? 'lg:border-r' : ''
-                            }`}
-                          >
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#58532a]">
-                              {column.heading}
-                            </p>
-                            <div className="mt-4 space-y-4">
-                              {column.items.map((menuItem) => (
-                                <button
-                                  key={menuItem.title}
-                                  onClick={() => handleResourceAction(menuItem.action)}
-                                  className="block w-full text-left transition hover:text-[#de715d]"
-                                >
-                                  <div className="text-[18px] font-medium text-[#16213e]">{menuItem.title}</div>
-                                  <div className="mt-1 text-[14px] leading-6 text-[#4b5876]">
-                                    {menuItem.description}
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
+                    <div className="grid gap-0 lg:grid-cols-[1fr_1fr_320px]">
+                      {activeMenu.columns.map((column, colIdx) => (
+                        <div
+                          key={column.heading}
+                          className={`p-6 ${
+                            colIdx < activeMenu.columns.length - 1 ? 'border-b border-[#16213e]/6 lg:border-b-0 lg:border-r' : 'border-b border-[#16213e]/6 lg:border-b-0'
+                          }`}
+                        >
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#58532a]">
+                            {column.heading}
+                          </p>
+                          <div className="mt-4 space-y-3">
+                            {column.items.map((menuItem, itemIdx) => (
+                              <motion.button
+                                key={menuItem.title}
+                                initial={reduced ? false : { opacity: 0, x: -6 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={
+                                  reduced
+                                    ? { duration: 0 }
+                                    : { type: 'spring', damping: 24, stiffness: 200, delay: 0.04 + itemIdx * 0.04 }
+                                }
+                                onClick={() => handleResourceAction(menuItem.action)}
+                                className="block w-full rounded-[8px] p-3 text-left transition-colors duration-150 hover:bg-[#f3f1ea]"
+                              >
+                                <div className="text-[16px] font-medium text-[#16213e]">{menuItem.title}</div>
+                                <div className="mt-1 text-[13px] leading-5 text-[#4b5876]">
+                                  {menuItem.description}
+                                </div>
+                              </motion.button>
+                            ))}
                           </div>
-                        ))}
-                        <div className="ibm-dropdown-preview flex flex-col justify-between p-6">
-                          <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#f3cabf]">
-                              {activeMenu.label}
-                            </p>
-                            <div className="mt-4 text-[28px] font-light leading-[1.08] text-white">
-                              {activeMenu.previewTitle}
-                            </div>
-                            <p className="mt-3 max-w-[26ch] text-[14px] leading-6 text-white/80">
-                              {activeMenu.previewBody}
-                            </p>
-                          </div>
-                          <button
-                            onClick={restartDemo}
-                            className="mt-6 inline-flex w-fit items-center gap-2 border border-[#de715d]/70 bg-[#de715d] px-4 py-3 text-[14px] font-medium text-white transition hover:bg-[#cb624f]"
-                          >
-                            Try with vulnerable agent
-                            <ArrowRight className="h-4 w-4" />
-                          </button>
                         </div>
+                      ))}
+                      <div className="ibm-dropdown-preview flex flex-col justify-between rounded-br-[12px] rounded-tr-[12px] p-6">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#f3cabf]">
+                            {activeMenu.label}
+                          </p>
+                          <div className="mt-4 text-[26px] font-light leading-[1.08] text-white">
+                            {activeMenu.previewTitle}
+                          </div>
+                          <p className="mt-3 max-w-[26ch] text-[14px] leading-6 text-white/80">
+                            {activeMenu.previewBody}
+                          </p>
+                        </div>
+                        <button
+                          onClick={restartDemo}
+                          className="mt-6 inline-flex w-fit items-center gap-2 rounded-[8px] border border-[#de715d]/70 bg-[#de715d] px-4 py-2.5 text-[14px] font-medium text-white transition hover:bg-[#cb624f]"
+                        >
+                          Try with vulnerable agent
+                          <ArrowRight className="h-4 w-4" />
+                        </button>
                       </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </nav>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </nav>
 
-              <div className="ml-auto flex items-center gap-3">
-                <button
-                  onClick={onEnterDashboard}
-                  className="px-4 py-2 text-[14px] text-white/86 transition hover:text-white"
-                >
-                  Log in
-                </button>
-                <button
-                  onClick={onEnterDashboard}
-                  className="border border-[#de715d] bg-[#de715d] px-5 py-3 text-[14px] font-medium text-white transition hover:bg-[#cb624f]"
-                >
-                  Access dashboard
-                </button>
-              </div>
+            <div className="ml-auto flex items-center gap-3">
+              <button
+                onClick={onEnterDashboard}
+                className={`px-4 py-2 text-[14px] transition-colors duration-500 ${
+                  scrolledPastHero ? 'text-[#16213e] hover:text-[#de715d]' : 'text-white hover:text-[#f3cabf]'
+                }`}
+              >
+                Log in
+              </button>
+              <button
+                onClick={onEnterDashboard}
+                className={`rounded-full px-5 py-2.5 text-[14px] font-medium transition-all duration-500 ${
+                  scrolledPastHero
+                    ? 'border border-[#16213e] bg-[#16213e] text-white hover:bg-[#233050]'
+                    : 'border border-white/30 bg-white/10 text-white hover:bg-white/18'
+                }`}
+                style={{
+                  backdropFilter: scrolledPastHero ? 'none' : 'blur(8px)',
+                  WebkitBackdropFilter: scrolledPastHero ? 'none' : 'blur(8px)',
+                }}
+              >
+                Access dashboard
+              </button>
             </div>
-          </header>
+          </div>
+        </div>
+      </header>
 
-          <div id="hero" className="pb-4 pt-14">
+      <section ref={heroRef} className="border-b border-[#de715d]/40 bg-[#16213e] text-white">
+        <div className="mx-auto max-w-[1280px] px-6 pb-18 pt-6 lg:px-10">
+
+          <div id="hero" className="pb-4 pt-20">
             <Reveal reduced={reduced} className="mx-auto max-w-[1140px] text-center">
               <h1 className="font-pixel-display mx-auto max-w-[15ch] text-[clamp(2.6rem,6vw,5.6rem)] leading-[1.14] tracking-[0.035em] text-[#f3f1ea]">
                 Secure AI agents before dangerous code merges
@@ -766,8 +854,12 @@ export default function LandingPage({ onEnterDashboard }) {
               const Icon = step.icon
 
               return (
-                <Reveal key={step.title} reduced={reduced} delay={index * 0.06}>
-                  <article className="h-full border border-[#de715d]/30 bg-white p-6">
+                <FloatIn key={step.title} reduced={reduced} delay={index * 0.12}>
+                  <motion.article
+                    className="h-full border border-[#de715d]/30 bg-white p-6"
+                    whileHover={reduced ? {} : { y: -6, scale: 1.015, boxShadow: '0 20px 60px rgba(22,33,62,0.10)' }}
+                    transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                  >
                     <div className="flex items-center justify-between">
                       <span className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#58532a]">
                         0{index + 1}
@@ -778,8 +870,8 @@ export default function LandingPage({ onEnterDashboard }) {
                       {step.title}
                     </h3>
                     <p className="mt-4 text-[15px] leading-7 text-[#4b5876]">{step.description}</p>
-                  </article>
-                </Reveal>
+                  </motion.article>
+                </FloatIn>
               )
             })}
           </div>
@@ -861,17 +953,23 @@ export default function LandingPage({ onEnterDashboard }) {
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-3">
-                {AGENT_ACTIVITY.map((item) => (
-                  <div key={item.agent} className="border border-[#de715d]/30 bg-[#f3f1ea] p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[20px] font-medium text-[#16213e]">{item.agent}</div>
-                      <ShieldAlert className="h-4 w-4 text-[#de715d]" />
-                    </div>
-                    <div className="mt-3 text-[13px] font-semibold uppercase tracking-[0.14em] text-[#58532a]">
-                      {item.surface}
-                    </div>
-                    <p className="mt-3 text-[14px] leading-6 text-[#4b5876]">{item.action}</p>
-                  </div>
+                {AGENT_ACTIVITY.map((item, index) => (
+                  <FloatIn key={item.agent} reduced={reduced} delay={index * 0.1}>
+                    <motion.div
+                      className="border border-[#de715d]/30 bg-[#f3f1ea] p-5"
+                      whileHover={reduced ? {} : { y: -4, boxShadow: '0 16px 48px rgba(22,33,62,0.08)' }}
+                      transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="text-[20px] font-medium text-[#16213e]">{item.agent}</div>
+                        <ShieldAlert className="h-4 w-4 text-[#de715d]" />
+                      </div>
+                      <div className="mt-3 text-[13px] font-semibold uppercase tracking-[0.14em] text-[#58532a]">
+                        {item.surface}
+                      </div>
+                      <p className="mt-3 text-[14px] leading-6 text-[#4b5876]">{item.action}</p>
+                    </motion.div>
+                  </FloatIn>
                 ))}
               </div>
             </Reveal>
@@ -901,8 +999,12 @@ export default function LandingPage({ onEnterDashboard }) {
 
           <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {METRICS.map((metric, index) => (
-              <Reveal key={metric.value} reduced={reduced} delay={index * 0.04}>
-                <div className="border border-[#de715d]/28 bg-white p-6">
+              <FloatIn key={metric.value} reduced={reduced} delay={index * 0.08}>
+                <motion.div
+                  className="border border-[#de715d]/28 bg-white p-6"
+                  whileHover={reduced ? {} : { y: -4, boxShadow: '0 16px 48px rgba(22,33,62,0.08)' }}
+                  transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                >
                   <div
                     className="text-[clamp(2.4rem,4vw,3.4rem)] font-light leading-none tracking-[-0.05em] text-[#16213e]"
                     style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
@@ -910,8 +1012,8 @@ export default function LandingPage({ onEnterDashboard }) {
                     {metric.value}
                   </div>
                   <p className="mt-4 text-[14px] leading-7 text-[#4b5876]">{metric.label}</p>
-                </div>
-              </Reveal>
+                </motion.div>
+              </FloatIn>
             ))}
           </div>
         </div>
