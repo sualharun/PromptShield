@@ -2,13 +2,31 @@
 
 AI-powered prompt security scanner. Paste a prompt or code snippet — PromptShield runs static pattern analysis and a Claude-powered semantic audit in parallel and returns ranked vulnerabilities mapped to **CWE** and the **OWASP LLM Top 10**, with concrete remediation, evidence snippets, and detector confidence.
 
+In v0.4 the data layer moved to **MongoDB Atlas**, adding semantic similarity (Vector Search), fuzzy/full-text search (Atlas Search), a fused ranked search bar (`$rankFusion`), live dashboard updates over change streams, time-series risk analytics, and a server-side redaction trigger. See **[MongoDB Atlas — what we use, and why](#mongodb-atlas--what-we-use-and-why)** below.
+
 UI is built on the **IBM Carbon Design System** (IBM Plex Sans, sharp corners, Carbon palette).
 
 ## Stack
 
 - **Frontend** — React + Vite + Tailwind CSS + Recharts (Vitest + React Testing Library)
-- **Backend** — FastAPI + SQLAlchemy (SQLite by default; Postgres-ready)
+- **Backend** — FastAPI + **MongoDB Atlas** (primary store, v0.4+); optional one-shot SQLite import via stdlib `sqlite3`
+- **Embeddings** — `sentence-transformers` (local, default) or **MongoDB Voyage AI** (`https://ai.mongodb.com/v1`)
 - **AI** — Anthropic Claude (`claude-sonnet-4-20250514`)
+
+### MongoDB Atlas — what we use, and why
+
+| Feature | Where it shows up | What it replaces |
+| --- | --- | --- |
+| **Atlas Vector Search** (`$vectorSearch`) | `SEMANTIC_JAILBREAK_MATCH` finding on every scan; `◆ Atlas · NN%` similarity badge in `FindingCard`; `/api/v2/similar`; `/api/v2/scans/{id}/similar` | Catches paraphrased attacks the regex layer misses |
+| **Atlas Search** (`$search`, Lucene) | Dashboard search bar with autocomplete + facets; `/api/v2/search*` | Replaces SQL `LIKE` with fuzzy + relevance scoring |
+| **Hybrid Search** (`$rankFusion`) | Dashboard "◆ Atlas" `HybridSearchBar`; `/api/v2/search/hybrid` | Single ranked list combining keyword + semantic |
+| **Time-series collections** + `$setWindowFields` | `/api/v2/risk-timeline` with 7-day rolling avg, charted on the dashboard | Risk-snapshot SQL table + manual window calc |
+| **Change Streams** → WebSocket | Dashboard `AtlasLiveBadge` (pulses green on every new scan), `WS /api/live/scans` | Polling-based dashboards |
+| **Atlas Triggers** (server-side JS) | `redact_on_scan_insert` strips secrets/PII inside the DB and writes an `audit_logs` row proving it ran | Defense-in-depth against missed redactor calls |
+| **JSON Schema validation** | `scans` collection enforces shape on insert | Prevents malformed scan docs without ORM-side checks |
+| **Voyage AI Embeddings** (`voyage-3-large`, 1024d) | Powers all vector workflows above | Local `sentence-transformers` (still supported as fallback) |
+| **Benchmark / model registry** | `benchmark_runs` collection — `three_layer_benchmark.py` posts every evaluation (accuracy / precision / recall / F1 / confusion matrix) via `/api/v2/benchmark/runs` | Ad-hoc results in stdout / JSON files |
+| **GridFS** *(planned)* | `ml_classifier.pkl` model registry | Filesystem `.pkl` files |
 
 ## Features
 
@@ -54,11 +72,35 @@ uvicorn main:app --reload --port 8000
 ```
 
 The backend works without `ANTHROPIC_API_KEY` — it skips the AI layer and returns static-only findings.
+The backend also works without `MONGODB_URI` — Mongo features fall back to in-process equivalents (mongomock) so dev / CI keeps working.
 
 Run tests:
 ```bash
 pytest
 ```
+
+### 1b. MongoDB Atlas setup (5 min, free tier)
+
+1. Create a free **M0 cluster** at [cloud.mongodb.com](https://cloud.mongodb.com).
+2. **Database Access** → add a user with read/write to any database.
+3. **Network Access** → add `0.0.0.0/0` (open to internet, fine for hackathon demo).
+4. **Connect → Drivers → Python** → copy the `mongodb+srv://…` URI into `backend/.env`:
+   ```
+   MONGODB_URI=mongodb+srv://<user>:<pass>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
+   PRIMARY_STORE=mongo
+   ```
+5. Provision the Atlas Search + Vector Search indexes:
+   ```bash
+   python backend/scripts/setup_atlas_indexes.py
+   ```
+   (If your driver can't auto-create indexes, the script prints the JSON and step-by-step UI instructions.)
+6. *(Optional)* Migrate existing SQLite history into Atlas:
+   ```bash
+   python backend/scripts/migrate_sqlite_to_mongo.py
+   ```
+7. *(Optional)* Install the **`redact_on_scan_insert`** Atlas Trigger by following the header comment in [`backend/scripts/atlas_triggers/redact_on_scan_insert.js`](backend/scripts/atlas_triggers/redact_on_scan_insert.js).
+
+After restart, hit `GET /api/health` — `mongo.ok` should be `true` and `corpus_size` should be `151` (the seeded prompts).
 
 ### 2. Frontend (port 5173)
 
@@ -135,7 +177,14 @@ curl http://localhost:8000/api/health
 Expected after config is complete:
 
 ```json
-{"status":"ok","version":"0.3.0","github_app_configured":true}
+{
+  "status": "ok",
+  "version": "0.3.0",
+  "github_app_configured": true,
+  "mongo": { "ok": true, "db": "promptshield" },
+  "primary_store": "mongo",
+  "embedding_provider": "voyage"
+}
 ```
 
 ### 7. Troubleshooting checklist
@@ -163,7 +212,14 @@ All backend settings are env-driven (see `backend/.env.example`):
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | — | Required for AI layer |
 | `AI_MODEL` | `claude-sonnet-4-20250514` | Override model |
-| `DATABASE_URL` | `sqlite:///./promptshield.db` | Postgres URL works too |
+| `DATABASE_URL` | `sqlite:///./promptshield.db` | Only for `scripts/migrate_sqlite_to_mongo.py` (legacy `.db` path) |
+| `MONGODB_URI` | — | Atlas SRV connection string (enables all `/api/v2/*` features) |
+| `MONGODB_DB` | `promptshield` | Atlas database name |
+| `PRIMARY_STORE` | `mongo` | `mongo` \| `sql` \| `dual` |
+| `EMBEDDING_PROVIDER` | `voyage` | `voyage` \| `local` (sentence-transformers) |
+| `EMBEDDING_MODEL` | `voyage-3-large` | Voyage model id |
+| `EMBEDDING_DIMS` | `1024` | Must match `numDimensions` in the Atlas Vector Search index |
+| `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
 | `ALLOWED_ORIGINS` | `localhost:5173` | CORS allow-list |
 | `SCAN_RATE_LIMIT` / `SCAN_RATE_WINDOW` | `10` / `60s` | Per-IP rate limit |
 | `MAX_INPUT_CHARS` | `50000` | Input size cap |
@@ -200,7 +256,29 @@ All backend settings are env-driven (see `backend/.env.example`):
 | `POST` | `/api/policy/validate` | Validate a `.promptshield.yml` policy file. |
 | `GET` | `/api/policy/example` | Example policy YAML. |
 | `POST` | `/api/github/webhook` | GitHub App webhook (signature-verified). |
-| `GET` | `/api/health` | Liveness + version + `github_app_configured` flag. |
+| `GET` | `/api/health` | Liveness + version + `github_app_configured` + Mongo status. |
+
+#### MongoDB Atlas-powered endpoints (`/api/v2/*`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v2/health` | Atlas connection + per-feature flags + corpus size |
+| `POST` | `/api/v2/similar` | Vector Search — top-k semantic neighbors of a prompt |
+| `POST` | `/api/v2/corpus/seed` | Re-embed `prompts.json` into `prompt_vectors` (idempotent) |
+| `GET` | `/api/v2/search` | Atlas `$search` — fuzzy + multi-field over scans/findings |
+| `GET` | `/api/v2/search/autocomplete` | Atlas Search autocomplete tokenizer for the search bar |
+| `GET` | `/api/v2/search/facets` | `$searchMeta` facet counts (severity, CWE) |
+| `POST` | `/api/v2/search/hybrid` | `$rankFusion` of `$vectorSearch` + `$search` over `scans` |
+| `GET` | `/api/v2/risk-timeline` | Time-series collection + `$setWindowFields` (7-day rolling avg) |
+| `GET` | `/api/v2/scans` | List scans straight from Mongo |
+| `GET` | `/api/v2/scans/{id}` | Single scan from Mongo |
+| `GET` | `/api/v2/scans/{id}/similar` | Find historical scans semantically close to this one |
+| `GET` | `/api/v2/aggregations/repos` | `$group` aggregate of repos by avg/max risk |
+| `GET` | `/api/v2/aggregations/llm-targets` | LLM target distribution |
+| `GET` | `/api/v2/aggregations/top-cwes` | Top CWEs in last N days |
+| `POST` | `/api/v2/benchmark/runs` | Persist a benchmark run (model registry) |
+| `GET` | `/api/v2/benchmark/runs` | List recent benchmark runs |
+| `WS`   | `/api/live/scans` | Live change-stream feed (drives the dashboard `AtlasLiveBadge`) |
 
 Every response includes an `x-request-id` header that matches the `request_id` field in the JSON logs.
 
@@ -209,6 +287,24 @@ Every response includes an `x-request-id` header that matches the `request_id` f
 `DIRECT_INJECTION`, `SECRET_IN_PROMPT`, `SYSTEM_PROMPT_EXPOSED`, `ROLE_CONFUSION`, `OVERLY_PERMISSIVE`, `DATA_LEAKAGE`, `INDIRECT_INJECTION` — each mapped to a CWE and an OWASP LLM category. The AI layer adds semantic findings the regex layer cannot catch.
 
 Enhanced leakage coverage includes DB credential patterns, PII classes (email, SSN, phone, card-like values), and likely user-data flow into external LLM API calls.
+
+## Three-layer benchmark (Atlas as a model registry)
+
+`backend/three_layer_benchmark.py` evaluates every prompt in `prompts.json` (151 labeled samples) against three independent detectors and an ensemble:
+
+1. **Static rules** — regex patterns
+2. **ML classifier** — TF-IDF + logistic regression (`ml_classifier.pkl`)
+3. **PromptShield API** — `POST /api/scan` (Claude semantic + Atlas Vector Search enrichment)
+
+It computes accuracy / precision / recall / F1 / confusion matrix for the ensemble and `POST`s the summary to `/api/v2/benchmark/runs`, persisting it in the Atlas `benchmark_runs` collection. Treat that collection as a versioned model registry — every evaluation is timestamped and queryable.
+
+```bash
+cd backend
+python three_layer_benchmark.py            # ~3–7 min, needs uvicorn running on :8000
+curl http://localhost:8000/api/v2/benchmark/runs | python -m json.tool
+```
+
+The terminal also writes per-prompt results to `backend/three_layer_results.json`.
 
 ## Positioning
 

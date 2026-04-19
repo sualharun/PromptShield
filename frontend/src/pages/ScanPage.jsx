@@ -42,19 +42,24 @@ export default function ScanPage({ onScan, loading, error }) {
     setJbLoading(true)
     setJbResult(null)
     try {
-      const r = await fetch('/api/jailbreak/simulate', {
+      const r = await fetch('/api/jailbreak/simulate/v2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: jbInput }),
       })
       if (!r.ok) throw new Error('Simulation failed')
-      setJbResult(await r.json())
+      const result = await r.json()
+      setJbResult(result)
     } catch {
       setJbResult({
-        vulnerable: false,
-        confidence: 0,
-        recommendation: 'Simulation unavailable right now. Try again in a moment.',
-        results: [],
+        overall: {
+          vulnerable: false,
+          confidence: 0,
+          recommendation: 'Simulation unavailable right now. Try again in a moment.',
+        },
+        injection_results: [],
+        defenses: {},
+        interpolation_points: [],
       })
     } finally {
       setJbLoading(false)
@@ -200,38 +205,61 @@ export default function ScanPage({ onScan, loading, error }) {
           >
             {jbLoading ? 'Testing…' : 'Run simulation'}
           </button>
-          {jbResult && (
-            <span className={`text-sm font-medium ${jbResult.vulnerable ? 'text-ibm-red-60' : 'text-ibm-green-60'}`}>
-              {jbResult.vulnerable ? 'Likely exploitable' : 'No obvious exploit path'}
-              {' · '}confidence {(Math.round((jbResult.confidence || 0) * 100))}%
+          {jbResult && jbResult.overall && (
+            <span className={`text-sm font-medium ${jbResult.overall.vulnerable ? 'text-ibm-red-60' : 'text-ibm-green-60'}`}>
+              {jbResult.overall.vulnerable ? 'Likely exploitable' : 'No obvious exploit path'}
+              {' · '}confidence {(Math.round((jbResult.overall.confidence || 0) * 100))}%
             </span>
           )}
         </div>
-        {jbResult && (
+        {jbResult && jbResult.overall && (
           <div className="mt-3 space-y-2">
             <p className="text-[12px] text-carbon-text-secondary dark:text-ibm-gray-30">
-              {jbResult.recommendation}
+              {jbResult.overall.recommendation}
             </p>
-            {Array.isArray(jbResult.results) && jbResult.results.length > 0 && (
-              <div className="overflow-x-auto border border-carbon-border dark:border-ibm-gray-80">
+            {/* Defenses summary */}
+            {jbResult.defenses && (
+              <div className="flex flex-wrap gap-3 text-xs mt-2">
+                {Object.entries(jbResult.defenses).map(([k, v]) => (
+                  <span key={k} className={`px-2 py-1 rounded border ${v ? 'bg-green-100 border-green-300 text-green-700' : 'bg-red-100 border-red-300 text-red-700'}`}>
+                    {k.replace(/_/g, ' ')}: {v ? '✔' : '✗'}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Interpolation points */}
+            {jbResult.interpolation_points && jbResult.interpolation_points.length > 0 && (
+              <div className="mt-2 text-xs">
+                <b>Interpolation points:</b> {jbResult.interpolation_points.map(p => p.variable).join(', ')}
+              </div>
+            )}
+            {/* Injection results */}
+            {Array.isArray(jbResult.injection_results) && jbResult.injection_results.length > 0 && (
+              <div className="overflow-x-auto border border-carbon-border dark:border-ibm-gray-80 mt-2">
                 <table className="w-full text-left text-[12px]">
                   <thead>
                     <tr className="border-b border-carbon-border bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
-                      <th className="px-3 py-2">Pattern</th>
-                      <th className="px-3 py-2">Likely Effective</th>
+                      <th className="px-3 py-2">Variable</th>
                       <th className="px-3 py-2">Payload</th>
+                      <th className="px-3 py-2">Likely Effective</th>
+                      <th className="px-3 py-2">Checks Failed</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {jbResult.results.map((r) => (
-                      <tr key={r.pattern} className="border-b border-carbon-border/70 dark:border-ibm-gray-80/70">
-                        <td className="px-3 py-2 font-mono">{r.pattern}</td>
-                        <td className={`px-3 py-2 ${r.likely_effective ? 'text-ibm-red-60' : 'text-ibm-green-60'}`}>
-                          {r.likely_effective ? 'Yes' : 'No'}
-                        </td>
-                        <td className="px-3 py-2 text-carbon-text-secondary dark:text-ibm-gray-30">{r.payload}</td>
-                      </tr>
-                    ))}
+                    {jbResult.injection_results.flatMap((point) =>
+                      point.payloads.map((payload, idx) => (
+                        <tr key={point.variable + idx} className="border-b border-carbon-border/70 dark:border-ibm-gray-80/70">
+                          <td className="px-3 py-2 font-mono">{point.variable}</td>
+                          <td className="px-3 py-2 text-carbon-text-secondary dark:text-ibm-gray-30">{payload.payload_preview}</td>
+                          <td className={`px-3 py-2 ${payload.likely_effective ? 'text-ibm-red-60' : 'text-ibm-green-60'}`}>{payload.likely_effective ? 'Yes' : 'No'}</td>
+                          <td className="px-3 py-2">
+                            {payload.checks && Object.entries(payload.checks).filter(([k, v]) => v && v[0] === false).map(([k, v]) => (
+                              <div key={k} className="text-red-600">{k.replace(/_/g, ' ')}: {v[1]}</div>
+                            ))}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

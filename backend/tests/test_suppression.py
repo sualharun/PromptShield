@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from database import Base, FindingSuppression, SessionLocal, engine, init_db
 from main import app
+from mongo import C, col
 from suppression import annotate, finding_signature, suppressed_signatures
 
 
@@ -9,13 +9,7 @@ client = TestClient(app)
 
 
 def _reset():
-    init_db()
-    db = SessionLocal()
-    try:
-        db.query(FindingSuppression).delete()
-        db.commit()
-    finally:
-        db.close()
+    col(C.FINDING_SUPPRESSIONS).delete_many({})
 
 
 def test_signature_is_stable_and_short():
@@ -45,32 +39,30 @@ def test_annotate_flags_suppressed():
 
 def test_suppressed_signatures_scoping():
     _reset()
-    db = SessionLocal()
-    try:
-        db.add_all(
-            [
-                FindingSuppression(
-                    signature="globalsig",
-                    finding_type="T",
-                    finding_title="t",
-                    repo_full_name=None,
-                    suppressed_by="tester",
-                ),
-                FindingSuppression(
-                    signature="reposig",
-                    finding_type="T",
-                    finding_title="t",
-                    repo_full_name="org/repo-a",
-                    suppressed_by="tester",
-                ),
-            ]
-        )
-        db.commit()
-        assert suppressed_signatures(db, "org/repo-a") == {"globalsig", "reposig"}
-        assert suppressed_signatures(db, "org/other") == {"globalsig"}
-        assert suppressed_signatures(db, None) == {"globalsig"}
-    finally:
-        db.close()
+    from datetime import datetime, timezone
+    col(C.FINDING_SUPPRESSIONS).insert_many(
+        [
+            {
+                "signature": "globalsig",
+                "finding_type": "T",
+                "finding_title": "t",
+                "repo_full_name": None,
+                "suppressed_by": "tester",
+                "created_at": datetime.now(timezone.utc),
+            },
+            {
+                "signature": "reposig",
+                "finding_type": "T",
+                "finding_title": "t",
+                "repo_full_name": "org/repo-a",
+                "suppressed_by": "tester",
+                "created_at": datetime.now(timezone.utc),
+            },
+        ]
+    )
+    assert suppressed_signatures(None, "org/repo-a") == {"globalsig", "reposig"}
+    assert suppressed_signatures(None, "org/other") == {"globalsig"}
+    assert suppressed_signatures(None, None) == {"globalsig"}
 
 
 def test_api_create_list_delete_round_trip():

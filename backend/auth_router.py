@@ -1,17 +1,20 @@
+"""Auth REST endpoints — fully Mongo-backed (v0.4 port)."""
+from __future__ import annotations
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
+import repositories as repos
 from auth import (
     SESSION_COOKIE_NAME,
+    SessionUser,
     create_session_token,
     get_current_user,
     verify_password,
 )
 from config import settings
-from database import User, get_db
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -23,22 +26,23 @@ class LoginRequest(BaseModel):
 
 
 class MeResponse(BaseModel):
-    id: int
+    id: str
     email: str
     name: str
     role: str
 
 
-def _to_me(user: User) -> MeResponse:
+def _to_me(user: SessionUser) -> MeResponse:
     return MeResponse(id=user.id, email=user.email, name=user.name, role=user.role)
 
 
 @router.post("/login", response_model=MeResponse)
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginRequest, response: Response):
     email = body.email.lower().strip()
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not verify_password(body.password, user.password_hash):
+    doc = repos.find_user_by_email(email)
+    if not doc or not verify_password(body.password, doc.get("password_hash") or ""):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    user = SessionUser.from_doc(doc)
     token = create_session_token(user)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -59,7 +63,7 @@ def logout(response: Response):
 
 
 @router.get("/me", response_model=Optional[MeResponse])
-def me(user: Optional[User] = Depends(get_current_user)):
+def me(user: Optional[SessionUser] = Depends(get_current_user)):
     if user is None:
         return None
     return _to_me(user)

@@ -1,27 +1,27 @@
-"""Tests for multi-tenant organization management."""
+"""Tests for multi-tenant organization management — Mongo-backed (v0.4)."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)
-def _setup(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///")
-    from database import Base, engine, init_db, safe_create_all
-    from models import Organization, OrgMember, ApiKey, PolicyVersion, ScanJob, EvalRun, BaselineFinding
-    Base.metadata.drop_all(bind=engine)
-    safe_create_all()
-    init_db()
+def _setup():
+    from mongo import C, col
+    col(C.USERS).delete_many({})
+    col(C.ORGANIZATIONS).delete_many({})
 
 
-def _make_admin(db):
+def _make_admin():
     from auth import hash_password
-    from database import User
-    user = User(email="admin@test.com", name="Admin", password_hash=hash_password("pass"), role="admin")
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+    import repositories as repos
+    return repos.insert_user(
+        {
+            "email": "admin@test.com",
+            "name": "Admin",
+            "password_hash": hash_password("pass"),
+            "role": "admin",
+        }
+    )
 
 
 def _login(client, email="admin@test.com", password="pass"):
@@ -32,13 +32,8 @@ def _login(client, email="admin@test.com", password="pass"):
 
 def test_create_org_and_list():
     from main import app
-    from database import SessionLocal
     client = TestClient(app)
-    db = SessionLocal()
-    try:
-        _make_admin(db)
-    finally:
-        db.close()
+    _make_admin()
 
     cookies = _login(client)
     r = client.post("/api/orgs", json={"name": "Acme Corp", "slug": "acme"}, cookies=cookies)
@@ -57,17 +52,19 @@ def test_create_org_and_list():
 
 def test_invite_member():
     from main import app
-    from database import SessionLocal, User
     from auth import hash_password
+    import repositories as repos
+
     client = TestClient(app)
-    db = SessionLocal()
-    try:
-        _make_admin(db)
-        viewer = User(email="viewer@test.com", name="Viewer", password_hash=hash_password("pass"), role="viewer")
-        db.add(viewer)
-        db.commit()
-    finally:
-        db.close()
+    _make_admin()
+    repos.insert_user(
+        {
+            "email": "viewer@test.com",
+            "name": "Viewer",
+            "password_hash": hash_password("pass"),
+            "role": "viewer",
+        }
+    )
 
     cookies = _login(client)
     r = client.post("/api/orgs", json={"name": "Acme", "slug": "acme2"}, cookies=cookies)
@@ -88,13 +85,8 @@ def test_invite_member():
 
 def test_api_key_lifecycle():
     from main import app
-    from database import SessionLocal
     client = TestClient(app)
-    db = SessionLocal()
-    try:
-        _make_admin(db)
-    finally:
-        db.close()
+    _make_admin()
 
     cookies = _login(client)
     r = client.post("/api/orgs", json={"name": "Acme", "slug": "acme3"}, cookies=cookies)
@@ -120,13 +112,8 @@ def test_api_key_lifecycle():
 
 def test_duplicate_slug_rejected():
     from main import app
-    from database import SessionLocal
     client = TestClient(app)
-    db = SessionLocal()
-    try:
-        _make_admin(db)
-    finally:
-        db.close()
+    _make_admin()
 
     cookies = _login(client)
     client.post("/api/orgs", json={"name": "Acme", "slug": "dup"}, cookies=cookies)

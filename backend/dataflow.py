@@ -244,9 +244,22 @@ def analyze(source_code: str) -> List[DataflowFinding]:
         return []
 
     findings: List[DataflowFinding] = []
-    # tainted: var_name → TaintedVar
     tainted: Dict[str, TaintedVar] = {}
     seen_flows: Set[Tuple[int, int]] = set()
+
+    # --- Patch: treat parameters of @tool-decorated functions as taint sources ---
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            is_agent_tool = False
+            # Check for @tool decorator
+            for deco in node.decorator_list:
+                if isinstance(deco, ast.Name) and deco.id == "tool":
+                    is_agent_tool = True
+                elif isinstance(deco, ast.Attribute) and deco.attr == "tool":
+                    is_agent_tool = True
+            if is_agent_tool:
+                for arg in node.args.args:
+                    tainted[arg.arg] = TaintedVar(arg.arg, "agent function parameter (@tool)", node.lineno)
 
     # Pass 1: walk all statements and collect taint + check sinks.
     for node in ast.walk(tree):

@@ -1,30 +1,34 @@
-"""Organization management endpoints.
+"""Organization management endpoints — Mongo-backed (v0.4 port).
 
-Provides CRUD for orgs, membership management, and API key provisioning.
+Members and API keys live as embedded arrays under each `organizations` doc.
+This is the canonical NoSQL way to model 1:N data that's *always* fetched
+together with the parent.
 """
+from __future__ import annotations
 
-import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from auth import get_current_user, require_role
-from database import User, get_db
-from models import ApiKey, OrgMember, Organization
-from tenant import create_org, generate_api_key, hash_api_key
+import repositories as repos
+from auth import SessionUser, get_current_user, require_role
+from mongo import C, col
+from tenant import create_org as create_org_helper
+from tenant import generate_api_key, hash_api_key  # noqa: F401  (re-export for tests)
+
 
 router = APIRouter(prefix="/api/orgs", tags=["organizations"])
 
 
+# ── Pydantic models ─────────────────────────────────────────────────────────
 class CreateOrgRequest(BaseModel):
     name: str
     slug: str
 
 
 class OrgResponse(BaseModel):
-    id: int
+    id: str
     name: str
     slug: str
     plan: str
@@ -38,8 +42,8 @@ class InviteMemberRequest(BaseModel):
 
 
 class MemberResponse(BaseModel):
-    id: int
-    user_id: int
+    id: str
+    user_id: str
     email: str
     name: str
     role: str
@@ -51,7 +55,7 @@ class CreateApiKeyRequest(BaseModel):
 
 
 class ApiKeyResponse(BaseModel):
-    id: int
+    id: str
     name: str
     key_prefix: str
     scopes: str
@@ -67,173 +71,188 @@ class UpdateOrgSettingsRequest(BaseModel):
     settings: dict
 
 
+# ── Helpers ─────────────────────────────────────────────────────────────────
+def _org_response(org: dict) -> OrgResponse:
+    return OrgResponse(
+        id=str(org["_id"]),
+        name=org.get("name", ""),
+        slug=org.get("slug", ""),
+        plan=org.get("plan", "free"),
+        settings=org.get("settings") or {},
+        member_count=len(org.get("members") or []),
+    )
+
+
+def _member_id(org_id: str, user_id: str) -> str:
+    """Synthetic stable id for an embedded member entry — used by remove_member."""
+    return f"{org_id}:{user_id}"
+
+
+def _assert_member(org: dict, user_id: str) -> dict:
+    for m in org.get("members") or []:
+        if str(m.get("user_id")) == user_id:
+            return m
+    raise HTTPException(status_code=403, detail="Not a member of this organization")
+
+
+def _assert_admin(org: dict, user_id: str) -> dict:
+    m = _assert_member(org, user_id)
+    if m.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    return m
+
+
+def _require_org(org_id: str) -> dict:
+    org = repos.get_org_by_id(org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return org
+
+
+# ── Routes ──────────────────────────────────────────────────────────────────
 @router.post("", response_model=OrgResponse)
 def create_organization(
     body: CreateOrgRequest,
-    user: User = Depends(require_role("admin")),
-    db: Session = Depends(get_db),
+    user: SessionUser = Depends(require_role("admin")),
 ):
-    existing = db.query(Organization).filter(Organization.slug == body.slug).first()
-    if existing:
+    if col(C.ORGANIZATIONS).find_one({"slug": body.slug.lower().strip()}):
         raise HTTPException(status_code=409, detail="Slug already taken")
-    org = create_org(db, body.name, body.slug, user)
-    return _org_response(db, org)
+    org = create_org_helper(None, body.name, body.slug, user)
+    return _org_response(org)
 
 
 @router.get("", response_model=List[OrgResponse])
-def list_orgs(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def list_orgs(user: Optional[SessionUser] = Depends(get_current_user)):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    memberships = db.query(OrgMember).filter(OrgMember.user_id == user.id).all()
-    org_ids = [m.org_id for m in memberships]
-    orgs = db.query(Organization).filter(Organization.id.in_(org_ids)).all() if org_ids else []
-    return [_org_response(db, o) for o in orgs]
+    cursor = col(C.ORGANIZATIONS).find({"members.user_id": str(user.id)})
+    return [_org_response(o) for o in cursor]
 
 
 @router.get("/{org_id}", response_model=OrgResponse)
-def get_org(
-    org_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_org(org_id: str, user: Optional[SessionUser] = Depends(get_current_user)):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-    member = (
-        db.query(OrgMember)
-        .filter(OrgMember.org_id == org_id, OrgMember.user_id == user.id)
-        .first()
-    )
-    if not member:
-        raise HTTPException(status_code=403, detail="Not a member of this organization")
-    return _org_response(db, org)
+    org = _require_org(org_id)
+    _assert_member(org, str(user.id))
+    return _org_response(org)
 
 
 @router.put("/{org_id}/settings")
 def update_org_settings(
-    org_id: int,
+    org_id: str,
     body: UpdateOrgSettingsRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: Optional[SessionUser] = Depends(get_current_user),
 ):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    member = (
-        db.query(OrgMember)
-        .filter(OrgMember.org_id == org_id, OrgMember.user_id == user.id)
-        .first()
+    org = _require_org(org_id)
+    _assert_admin(org, str(user.id))
+    col(C.ORGANIZATIONS).update_one(
+        {"_id": org["_id"]}, {"$set": {"settings": body.settings}}
     )
-    if not member or member.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin role required")
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-    org.settings_json = json.dumps(body.settings)
-    db.commit()
     return {"ok": True}
 
 
 @router.get("/{org_id}/members", response_model=List[MemberResponse])
 def list_members(
-    org_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    org_id: str, user: Optional[SessionUser] = Depends(get_current_user)
 ):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    _assert_member(db, org_id, user.id)
-    members = db.query(OrgMember).filter(OrgMember.org_id == org_id).all()
-    result = []
-    for m in members:
-        u = db.query(User).filter(User.id == m.user_id).first()
+    org = _require_org(org_id)
+    _assert_member(org, str(user.id))
+    out: List[MemberResponse] = []
+    for m in org.get("members") or []:
+        u = repos.get_user_by_id(m.get("user_id"))
         if u:
-            result.append(MemberResponse(
-                id=m.id, user_id=u.id, email=u.email, name=u.name, role=m.role
-            ))
-    return result
+            out.append(
+                MemberResponse(
+                    id=_member_id(str(org["_id"]), str(u.get("_id"))),
+                    user_id=str(u.get("_id")),
+                    email=u.get("email") or "",
+                    name=u.get("name") or "",
+                    role=m.get("role") or "viewer",
+                )
+            )
+    return out
 
 
 @router.post("/{org_id}/members", response_model=MemberResponse)
 def invite_member(
-    org_id: int,
+    org_id: str,
     body: InviteMemberRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: Optional[SessionUser] = Depends(get_current_user),
 ):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    _assert_admin(db, org_id, user.id)
-    target = db.query(User).filter(User.email == body.email.lower().strip()).first()
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    existing = (
-        db.query(OrgMember)
-        .filter(OrgMember.org_id == org_id, OrgMember.user_id == target.id)
-        .first()
-    )
-    if existing:
-        raise HTTPException(status_code=409, detail="Already a member")
+    org = _require_org(org_id)
+    _assert_admin(org, str(user.id))
     if body.role not in ("admin", "pm", "viewer"):
         raise HTTPException(status_code=400, detail="Invalid role")
-    member = OrgMember(org_id=org_id, user_id=target.id, role=body.role)
-    db.add(member)
-    db.commit()
-    db.refresh(member)
+    target = repos.find_user_by_email(body.email.lower().strip())
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    target_id = str(target.get("_id"))
+    if any(str(m.get("user_id")) == target_id for m in org.get("members") or []):
+        raise HTTPException(status_code=409, detail="Already a member")
+    repos.add_org_member(org["_id"], user_id=target_id, role=body.role)
     return MemberResponse(
-        id=member.id, user_id=target.id, email=target.email, name=target.name, role=member.role
+        id=_member_id(str(org["_id"]), target_id),
+        user_id=target_id,
+        email=target.get("email") or "",
+        name=target.get("name") or "",
+        role=body.role,
     )
 
 
 @router.delete("/{org_id}/members/{member_id}", status_code=204)
 def remove_member(
-    org_id: int,
-    member_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    org_id: str,
+    member_id: str,
+    user: Optional[SessionUser] = Depends(get_current_user),
 ):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    _assert_admin(db, org_id, user.id)
-    member = db.query(OrgMember).filter(OrgMember.id == member_id, OrgMember.org_id == org_id).first()
-    if not member:
+    org = _require_org(org_id)
+    _assert_admin(org, str(user.id))
+    # member_id is "<org_id>:<user_id>" — we accept either the synthetic form
+    # or just the user_id, to be friendly to clients.
+    target_user_id = member_id.split(":", 1)[-1]
+    res = col(C.ORGANIZATIONS).update_one(
+        {"_id": org["_id"]},
+        {"$pull": {"members": {"user_id": target_user_id}}},
+    )
+    if res.modified_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
-    db.delete(member)
-    db.commit()
 
 
 @router.post("/{org_id}/api-keys", response_model=ApiKeyCreatedResponse)
 def create_api_key(
-    org_id: int,
+    org_id: str,
     body: CreateApiKeyRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    user: Optional[SessionUser] = Depends(get_current_user),
 ):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    _assert_admin(db, org_id, user.id)
+    org = _require_org(org_id)
+    _assert_admin(org, str(user.id))
     raw, prefix, key_hash = generate_api_key()
-    key = ApiKey(
-        org_id=org_id,
+    repos.add_api_key(
+        org["_id"],
         name=body.name,
         key_hash=key_hash,
         key_prefix=prefix,
         scopes=body.scopes,
-        created_by=user.id,
     )
-    db.add(key)
-    db.commit()
-    db.refresh(key)
+    from datetime import datetime, timezone
+
     return ApiKeyCreatedResponse(
-        id=key.id,
-        name=key.name,
-        key_prefix=key.key_prefix,
-        scopes=key.scopes,
-        created_at=key.created_at.isoformat(),
+        id=f"{org_id}:{prefix}",
+        name=body.name,
+        key_prefix=prefix,
+        scopes=body.scopes,
+        created_at=datetime.now(timezone.utc).isoformat(),
         revoked=False,
         raw_key=raw,
     )
@@ -241,71 +260,43 @@ def create_api_key(
 
 @router.get("/{org_id}/api-keys", response_model=List[ApiKeyResponse])
 def list_api_keys(
-    org_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    org_id: str, user: Optional[SessionUser] = Depends(get_current_user)
 ):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    _assert_member(db, org_id, user.id)
-    keys = db.query(ApiKey).filter(ApiKey.org_id == org_id).all()
-    return [
-        ApiKeyResponse(
-            id=k.id,
-            name=k.name,
-            key_prefix=k.key_prefix,
-            scopes=k.scopes,
-            created_at=k.created_at.isoformat(),
-            revoked=k.revoked,
+    org = _require_org(org_id)
+    _assert_member(org, str(user.id))
+    out: List[ApiKeyResponse] = []
+    for k in org.get("api_keys") or []:
+        out.append(
+            ApiKeyResponse(
+                id=f"{org_id}:{k.get('key_prefix')}",
+                name=k.get("name") or "",
+                key_prefix=k.get("key_prefix") or "",
+                scopes=k.get("scopes") or "",
+                created_at=(k.get("created_at")).isoformat()
+                if k.get("created_at")
+                else "",
+                revoked=bool(k.get("revoked", False)),
+            )
         )
-        for k in keys
-    ]
+    return out
 
 
 @router.delete("/{org_id}/api-keys/{key_id}", status_code=204)
 def revoke_api_key(
-    org_id: int,
-    key_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    org_id: str,
+    key_id: str,
+    user: Optional[SessionUser] = Depends(get_current_user),
 ):
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    _assert_admin(db, org_id, user.id)
-    key = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.org_id == org_id).first()
-    if not key:
+    org = _require_org(org_id)
+    _assert_admin(org, str(user.id))
+    prefix = key_id.split(":", 1)[-1]
+    res = col(C.ORGANIZATIONS).update_one(
+        {"_id": org["_id"], "api_keys.key_prefix": prefix},
+        {"$set": {"api_keys.$.revoked": True}},
+    )
+    if res.modified_count == 0:
         raise HTTPException(status_code=404, detail="API key not found")
-    key.revoked = True
-    db.commit()
-
-
-def _assert_member(db: Session, org_id: int, user_id: int):
-    member = (
-        db.query(OrgMember)
-        .filter(OrgMember.org_id == org_id, OrgMember.user_id == user_id)
-        .first()
-    )
-    if not member:
-        raise HTTPException(status_code=403, detail="Not a member of this organization")
-
-
-def _assert_admin(db: Session, org_id: int, user_id: int):
-    member = (
-        db.query(OrgMember)
-        .filter(OrgMember.org_id == org_id, OrgMember.user_id == user_id)
-        .first()
-    )
-    if not member or member.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin role required")
-
-
-def _org_response(db: Session, org: Organization) -> OrgResponse:
-    count = db.query(OrgMember).filter(OrgMember.org_id == org.id).count()
-    return OrgResponse(
-        id=org.id,
-        name=org.name,
-        slug=org.slug,
-        plan=org.plan,
-        settings=json.loads(org.settings_json or "{}"),
-        member_count=count,
-    )

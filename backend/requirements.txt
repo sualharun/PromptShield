@@ -1,6 +1,5 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-sqlalchemy==2.0.34
 anthropic==0.39.0
 pydantic==2.9.2
 python-dotenv==1.0.1
@@ -12,4 +11,18 @@ reportlab==4.2.5
 bcrypt==4.2.0
 itsdangerous==2.2.0
 PyYAML==6.0.2
+requests>=2.32.0
+
+# ── MongoDB Atlas migration ──────────────────────────────────────────────────
+# motor 3.6.x pins pymongo<4.10; motor 3.7.x allows pymongo 4.10+ (needed for cp313 wheels).
+pymongo>=4.9,<5.0
+motor==3.7.1
+mongomock==4.2.0.post1
+websockets==13.1
+certifi>=2024.8.30
+
+# ── ML layer (training + embeddings for Atlas Vector Search) ────────────────
 scikit-learn==1.5.2
+numpy==2.1.1
+matplotlib==3.9.2
+sentence-transformers==3.2.0

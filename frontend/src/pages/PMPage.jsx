@@ -25,10 +25,10 @@ function fmtDate(iso) {
 function SectionHeader({ title, body }) {
   return (
     <div className="mb-3">
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8aa6d2]">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#de715d]">
         {title}
       </h2>
-      {body && <p className="mt-2 text-[12px] text-[#8da7cd]">{body}</p>}
+      {body && <p className="mt-2 text-[12px] text-carbon-text-secondary">{body}</p>}
     </div>
   )
 }
@@ -79,8 +79,8 @@ export default function PMPage({ onSignIn }) {
     return (
       <div className="mx-auto w-full max-w-4xl px-6 py-16">
         <p className="app-section-label text-[11px] font-semibold">Product-manager view</p>
-        <h1 className="mt-3 font-display text-4xl text-white">Sign in to view PM analytics</h1>
-        <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-[#9bb2d6]">
+        <h1 className="mt-3 font-display text-4xl text-carbon-text">Sign in to view PM analytics</h1>
+        <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-carbon-text-secondary">
           The PM dashboard shows author leaderboards, blocked PRs, and remediation deltas.
           It requires a PM or admin role.
         </p>
@@ -95,7 +95,7 @@ export default function PMPage({ onSignIn }) {
     return (
       <div className="mx-auto w-full max-w-7xl px-6 py-10">
         <div className="carbon-progress" />
-        <p className="mt-3 text-sm text-[#8da7cd]">Loading PM analytics…</p>
+        <p className="mt-3 text-sm text-carbon-text-tertiary">Loading PM analytics…</p>
       </div>
     )
   }
@@ -121,27 +121,27 @@ export default function PMPage({ onSignIn }) {
         <p className="app-section-label text-[11px] font-semibold">
           Product-manager view
         </p>
-        <h1 className="mt-3 font-display text-5xl leading-[0.98] tracking-[-0.05em] text-white">
+        <h1 className="mt-3 font-display text-5xl leading-[0.98] tracking-[-0.05em] text-carbon-text">
           Who ships risky code
         </h1>
-        <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-[#9bb2d6]">
+        <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-carbon-text-secondary">
           Aggregated from GitHub PR scans. Gate threshold ={' '}
-          <span className="font-mono text-[#dbe8ff]">{data?.gate_threshold ?? '—'}</span>.
+          <span className="font-mono text-carbon-text">{data?.gate_threshold ?? '—'}</span>.
         </p>
       </div>
 
       <section className="app-panel">
-        <div className="border-b border-white/10 px-4 py-3">
+        <div className="border-b border-carbon-border px-4 py-3">
           <SectionHeader title="Authors by gate failures" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-white/8">
+              <tr className="border-b border-carbon-border">
                 {['Author', 'Scans', 'Avg risk', 'Gate failures', 'Last scan'].map((header) => (
                   <th
                     key={header}
-                    className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#8aa6d2]"
+                    className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#58532a]"
                   >
                     {header}
                   </th>
@@ -150,10 +150,10 @@ export default function PMPage({ onSignIn }) {
             </thead>
             <tbody>
               {byAuthor.map((author) => (
-                <tr key={author.author_login} className="app-table-row border-b border-white/8">
-                  <td className="px-4 py-2 font-mono text-[12px] text-[#eef5ff]">{author.author_login}</td>
-                  <td className="px-4 py-2 text-[12px] tabular-nums text-[#bfd0ef]">{author.scan_count}</td>
-                  <td className="px-4 py-2 text-[12px] tabular-nums text-[#bfd0ef]">{author.avg_risk}</td>
+                <tr key={author.author_login} className="app-table-row border-b border-carbon-border">
+                  <td className="px-4 py-2 font-mono text-[12px] text-carbon-text">{author.author_login}</td>
+                  <td className="px-4 py-2 text-[12px] tabular-nums text-carbon-text-secondary">{author.scan_count}</td>
+                  <td className="px-4 py-2 text-[12px] tabular-nums text-carbon-text-secondary">{author.avg_risk}</td>
                   <td
                     className={`px-4 py-2 text-[12px] tabular-nums ${
                       author.gate_failures > 0 ? 'text-[#ff9cab]' : 'text-[#98e0ff]'
@@ -161,14 +161,14 @@ export default function PMPage({ onSignIn }) {
                   >
                     {author.gate_failures}
                   </td>
-                  <td className="px-4 py-2 text-[12px] text-[#8da7cd]">
+                  <td className="px-4 py-2 text-[12px] text-carbon-text-tertiary">
                     {fmtDate(author.last_scan_at)}
                   </td>
                 </tr>
               ))}
               {!byAuthor.length && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-5 text-sm text-[#8da7cd]">
+                  <td colSpan={5} className="px-4 py-5 text-sm text-carbon-text-tertiary">
                     No GitHub PR scans with attributable authors yet.
                   </td>
                 </tr>
@@ -179,17 +179,17 @@ export default function PMPage({ onSignIn }) {
       </section>
 
       <section className="app-panel mt-6">
-        <div className="border-b border-white/10 px-4 py-3">
+        <div className="border-b border-carbon-border px-4 py-3">
           <SectionHeader title="Recently blocked PRs" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-white/8">
+              <tr className="border-b border-carbon-border">
                 {['Repo', 'PR', 'Title', 'Score', 'Author', 'Scanned'].map((header) => (
                   <th
                     key={header}
-                    className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#8aa6d2]"
+                    className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#58532a]"
                   >
                     {header}
                   </th>
@@ -198,8 +198,8 @@ export default function PMPage({ onSignIn }) {
             </thead>
             <tbody>
               {blocked.map((row) => (
-                <tr key={row.scan_id} className="app-table-row border-b border-white/8">
-                  <td className="px-4 py-2 font-mono text-[12px] text-[#eef5ff]">
+                <tr key={row.scan_id} className="app-table-row border-b border-carbon-border">
+                  <td className="px-4 py-2 font-mono text-[12px] text-carbon-text">
                     {row.repo_full_name || '—'}
                   </td>
                   <td className="px-4 py-2 text-[12px]">
@@ -208,7 +208,7 @@ export default function PMPage({ onSignIn }) {
                         href={row.pr_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-[#8fbcff] hover:text-white"
+                        className="text-[#de715d] hover:text-carbon-text"
                       >
                         #{row.pr_number}
                       </a>
@@ -216,23 +216,23 @@ export default function PMPage({ onSignIn }) {
                       `#${row.pr_number ?? '—'}`
                     )}
                   </td>
-                  <td className="max-w-xs truncate px-4 py-2 text-[12px] text-[#bfd0ef]">
+                  <td className="max-w-xs truncate px-4 py-2 text-[12px] text-carbon-text-secondary">
                     {row.pr_title || '—'}
                   </td>
                   <td className="px-4 py-2 text-[12px] font-semibold tabular-nums text-[#ff9cab]">
                     {row.risk_score}
                   </td>
-                  <td className="px-4 py-2 font-mono text-[12px] text-[#eef5ff]">
+                  <td className="px-4 py-2 font-mono text-[12px] text-carbon-text">
                     {row.author_login || '—'}
                   </td>
-                  <td className="px-4 py-2 text-[12px] text-[#8da7cd]">
+                  <td className="px-4 py-2 text-[12px] text-carbon-text-tertiary">
                     {fmtDate(row.created_at)}
                   </td>
                 </tr>
               ))}
               {!blocked.length && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-5 text-sm text-[#8da7cd]">
+                  <td colSpan={6} className="px-4 py-5 text-sm text-carbon-text-tertiary">
                     No PRs have crossed the gate yet.
                   </td>
                 </tr>
@@ -252,9 +252,9 @@ export default function PMPage({ onSignIn }) {
             {deltas.map((delta) => (
               <div
                 key={`${delta.repo_full_name}-${delta.pr_number}`}
-                className="flex items-center justify-between border-b border-white/8 py-2 text-[12px] last:border-0"
+                className="flex items-center justify-between border-b border-carbon-border py-2 text-[12px] last:border-0"
               >
-                <span className="font-mono text-[#eef5ff]">
+                <span className="font-mono text-carbon-text">
                   {delta.repo_full_name}#{delta.pr_number}
                 </span>
                 <span
@@ -276,12 +276,12 @@ export default function PMPage({ onSignIn }) {
             {repos.map((repo) => (
               <div key={repo.repo_full_name} className="text-[12px]">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-[#eef5ff]">{repo.repo_full_name}</span>
-                  <span className="tabular-nums text-[#8da7cd]">
+                  <span className="font-mono text-carbon-text">{repo.repo_full_name}</span>
+                  <span className="tabular-nums text-carbon-text-tertiary">
                     {repo.scan_count} scans · avg {repo.avg_risk}
                   </span>
                 </div>
-                <div className="mt-1 h-2 w-full overflow-hidden rounded-full border border-white/8">
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full border border-carbon-border">
                   <div
                     className="h-full rounded-full"
                     style={{
