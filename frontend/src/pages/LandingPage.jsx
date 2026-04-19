@@ -564,7 +564,7 @@ function TestimonialCard({ testimonial, reduced, delay }) {
 function FeatureShowcaseVisual({ type }) {
   const visuals = {
     'pr-comments': (
-      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-6 flex flex-col justify-center border border-white/10">
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-[#0d1f3e] via-[#132a52] to-[#0a162a] p-6 flex flex-col justify-center border border-[#244a87]/60 shadow-[0_20px_36px_rgba(9,16,30,0.32)]">
         <div className="space-y-3">
           <div className="flex items-start gap-3">
             <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600" />
@@ -578,14 +578,14 @@ function FeatureShowcaseVisual({ type }) {
           </div>
           <div className="border-l-2 border-red-500/50 pl-4 py-2">
             <div className="text-[11px] text-red-400 font-mono">High: Potential prompt injection in user input</div>
-            <div className="text-[10px] text-white/50 font-mono mt-1">Evidence: {...user_input}</div>
+            <div className="text-[10px] text-white/72 font-mono mt-1">Evidence: {"{...user_input}"}</div>
           </div>
         </div>
-        <div className="mt-4 text-center text-white/40 text-xs">GitHub PR Review UI</div>
+        <div className="mt-4 text-center text-white/60 text-xs">GitHub PR Review UI</div>
       </div>
     ),
     'risk-chart': (
-      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-6 flex flex-col justify-center border border-white/10">
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-[#0d1f3e] via-[#132a52] to-[#0a162a] p-6 flex flex-col justify-center border border-[#244a87]/60 shadow-[0_20px_36px_rgba(9,16,30,0.32)]">
         <div className="flex items-end justify-center gap-2 h-40">
           <div className="w-8 h-20 bg-red-500/70 rounded" />
           <div className="w-8 h-32 bg-orange-500/70 rounded" />
@@ -602,7 +602,7 @@ function FeatureShowcaseVisual({ type }) {
       </div>
     ),
     'policy-yaml': (
-      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-4 flex flex-col justify-center border border-white/10 font-mono text-[10px]">
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-[#0d1f3e] via-[#132a52] to-[#0a162a] p-4 flex flex-col justify-center border border-[#244a87]/60 shadow-[0_20px_36px_rgba(9,16,30,0.32)] font-mono text-[10px]">
         <div className="text-green-400/80 space-y-1">
           <div><span className="text-white/60">version:</span> <span className="text-blue-400">1</span></div>
           <div><span className="text-white/60">policies:</span></div>
@@ -616,7 +616,7 @@ function FeatureShowcaseVisual({ type }) {
       </div>
     ),
     'compliance-table': (
-      <div className="h-full w-full rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-900/50 p-4 flex flex-col justify-center border border-white/10">
+      <div className="h-full w-full rounded-lg bg-gradient-to-br from-[#0d1f3e] via-[#132a52] to-[#0a162a] p-4 flex flex-col justify-center border border-[#244a87]/60 shadow-[0_20px_36px_rgba(9,16,30,0.32)]">
         <div className="text-[9px] text-white/50 space-y-2">
           <div className="grid grid-cols-4 gap-2 font-mono font-semibold">
             <div>Finding</div>
@@ -653,21 +653,21 @@ function FeatureShowcase({ feature, reduced, index }) {
     <Reveal reduced={reduced} delay={index * 0.1} className="h-full">
       <div className="flex flex-col lg:gap-12 h-full">
         <div className="flex-1 flex flex-col justify-center">
-          <h3 className="text-[28px] lg:text-[32px] font-semibold leading-[1.1] text-white mb-4">
+          <h3 className="text-[28px] lg:text-[32px] font-semibold leading-[1.1] text-[#10233e] mb-4">
             {feature.title}
           </h3>
-          <p className="text-[15px] leading-[1.6] text-white/75 mb-6">
+          <p className="text-[15px] leading-[1.6] text-[#425a7f] mb-6">
             {feature.description}
           </p>
           <div className="space-y-2 mb-8">
             {feature.benefits.map((benefit) => (
               <div key={benefit} className="flex items-start gap-3">
-                <div className="flex-shrink-0 h-1.5 w-1.5 rounded-full bg-blue-400 mt-2" />
-                <span className="text-[14px] text-white/80">{benefit}</span>
+                <div className="flex-shrink-0 h-1.5 w-1.5 rounded-full bg-blue-600 mt-2" />
+                <span className="text-[14px] text-[#2d4364]">{benefit}</span>
               </div>
             ))}
           </div>
-          <a href="#" className="inline-flex items-center gap-2 text-[14px] font-semibold text-blue-400 hover:text-blue-300 transition-colors">
+          <a href="#" className="inline-flex items-center gap-2 text-[14px] font-semibold text-[#0f62fe] hover:text-[#0a4ecb] transition-colors">
             <span>{feature.cta}</span>
             <ArrowRight className="h-4 w-4" />
           </a>
