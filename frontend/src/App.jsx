@@ -26,9 +26,30 @@ const WORKSPACE_NAV = [
 ]
 
 const LANDING_NAV = [
-  { label: 'Platform', section: 'workflows' },
-  { label: 'Outcomes', section: 'proof' },
-  { label: 'Security', section: 'security' },
+  {
+    label: 'Platform',
+    items: [
+      { label: 'Overview', section: 'hero' },
+      { label: 'Workflows', section: 'workflows' },
+      { label: 'Scan Flow', section: 'workflows' },
+    ],
+  },
+  {
+    label: 'Outcomes',
+    items: [
+      { label: 'Results', section: 'proof' },
+      { label: 'Metrics', section: 'proof' },
+      { label: 'Case Proof', section: 'proof' },
+    ],
+  },
+  {
+    label: 'Security',
+    items: [
+      { label: 'Trust', section: 'security' },
+      { label: 'Compliance', section: 'security' },
+      { label: 'Audit Trail', section: 'security' },
+    ],
+  },
 ]
 
 export default function App() {
@@ -46,6 +67,7 @@ function AppShell() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [pendingHomeSection, setPendingHomeSection] = useState(null)
+  const [landingTone, setLandingTone] = useState('blue')
   useTheme()
   const { user, logout, loading: authLoading } = useAuth()
 
@@ -116,6 +138,15 @@ function AppShell() {
     setView('home')
   }, [])
 
+  const jumpToLandingSection = useCallback(
+    (section, event) => {
+      goHomeSection(section)
+      const details = event?.currentTarget?.closest('details')
+      if (details) details.removeAttribute('open')
+    },
+    [goHomeSection]
+  )
+
   useEffect(() => {
     if (view !== 'home' || !pendingHomeSection) return
 
@@ -134,7 +165,11 @@ function AppShell() {
         isHome ? 'bg-[#07111d] text-white' : 'app-shell bg-carbon-bg text-carbon-text'
       }`}
     >
-      <header className="shared-topbar sticky top-0 z-40 px-4 py-3 sm:px-6 lg:px-8">
+      <header
+        className={`shared-topbar sticky top-0 z-40 px-4 py-3 sm:px-6 lg:px-8 ${
+          isHome ? `tone-${landingTone}` : 'tone-blue'
+        }`}
+      >
         <div className="shared-topbar-shell mx-auto flex max-w-[1680px] items-center gap-3 px-4 py-2.5">
           <button
             onClick={() => setView('home')}
@@ -149,14 +184,24 @@ function AppShell() {
           </button>
 
           <nav className="hidden items-center gap-1 lg:flex">
-            {LANDING_NAV.map((item) => (
-              <button
-                key={item.section}
-                onClick={() => goHomeSection(item.section)}
-                className="shared-topbar-link"
-              >
-                {item.label}
-              </button>
+            {LANDING_NAV.map((menu) => (
+              <details key={menu.label} className="shared-topbar-dropdown group relative">
+                <summary className="shared-topbar-link shared-topbar-summary list-none">
+                  <span>{menu.label}</span>
+                  <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="shared-topbar-menu landing-topbar-menu">
+                  {menu.items.map((item) => (
+                    <button
+                      key={`${menu.label}-${item.label}`}
+                      onClick={(event) => jumpToLandingSection(item.section, event)}
+                      className="shared-topbar-menu-item"
+                    >
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </details>
             ))}
           </nav>
 
@@ -233,6 +278,7 @@ function AppShell() {
             <LandingPage
               onEnterDashboard={() => setView('dashboard')}
               onEnterScan={() => setView('scan')}
+              onToneChange={setLandingTone}
             />
           )}
           {view === 'scan' && <ScanPage onScan={runScan} loading={loading} error={error} />}

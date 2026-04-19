@@ -412,6 +412,35 @@ html.dark .carbon-progress {
   background: linear-gradient(180deg, rgba(2, 4, 7, 0.96) 0%, rgba(3, 7, 12, 0.9) 100%);
   border-bottom: 1px solid rgba(129, 159, 224, 0.1);
   backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.shared-topbar.tone-blue {
+  background: linear-gradient(180deg, rgba(3, 12, 24, 0.98) 0%, rgba(6, 18, 34, 0.92) 100%);
+  border-bottom-color: rgba(120, 169, 255, 0.2);
+}
+
+.shared-topbar.tone-gray {
+  background: linear-gradient(180deg, rgba(15, 15, 15, 0.98) 0%, rgba(20, 20, 20, 0.92) 100%);
+  border-bottom-color: rgba(120, 120, 120, 0.2);
+}
+
+.shared-topbar.tone-white {
+  background: linear-gradient(180deg, rgba(250, 250, 250, 0.98) 0%, rgba(240, 240, 240, 0.92) 100%);
+  border-bottom-color: rgba(100, 100, 100, 0.1);
+  color: #000;
+}
+
+.shared-topbar.tone-gray {
+  background: linear-gradient(180deg, rgba(32, 35, 41, 0.97) 0%, rgba(44, 47, 54, 0.92) 100%);
+  border-bottom-color: rgba(169, 176, 190, 0.3);
+}
+
+.shared-topbar.tone-white {
+  background: linear-gradient(180deg, rgba(247, 249, 252, 0.98) 0%, rgba(239, 243, 248, 0.94) 100%);
+  border-bottom-color: rgba(180, 190, 206, 0.45);
 }
 
 .shared-topbar-shell {
@@ -420,6 +449,37 @@ html.dark .carbon-progress {
     linear-gradient(180deg, rgba(10, 17, 28, 0.94) 0%, rgba(7, 12, 20, 0.94) 100%);
   border-radius: 999px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.shared-topbar.tone-gray .shared-topbar-shell {
+  border-color: rgba(176, 184, 200, 0.26);
+  background: linear-gradient(180deg, rgba(53, 57, 66, 0.95) 0%, rgba(45, 50, 58, 0.95) 100%);
+}
+
+.shared-topbar.tone-white .shared-topbar-shell {
+  border-color: rgba(184, 192, 206, 0.52);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(244, 247, 251, 0.97) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.shared-topbar.tone-white .shared-topbar-link,
+.shared-topbar.tone-white .shared-topbar-summary,
+.shared-topbar.tone-white .shared-topbar-ghost {
+  color: #24303f;
+}
+
+.shared-topbar.tone-white .shared-topbar-brand:hover,
+.shared-topbar.tone-white .shared-topbar-link:hover,
+.shared-topbar.tone-white .shared-topbar-summary:hover,
+.shared-topbar.tone-white .shared-topbar-ghost:hover {
+  border-color: rgba(78, 108, 148, 0.25);
+  background: rgba(32, 60, 100, 0.08);
+  color: #0f1f34;
+}
+
+.shared-topbar.tone-white .shared-topbar-brand .font-display,
+.shared-topbar.tone-white .shared-topbar-brand .terminal-mono {
+  color: #0f1f34 !important;
 }
 
 .shared-topbar-brand,
@@ -495,6 +555,22 @@ html.dark .carbon-progress {
   background: linear-gradient(180deg, rgba(6, 11, 18, 0.98) 0%, rgba(5, 9, 15, 0.98) 100%);
   border-radius: 18px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.38);
+}
+
+.landing-topbar-menu {
+  min-width: 240px;
+}
+
+.landing-phase-gray {
+  background: linear-gradient(180deg, #21252d 0%, #2a2f39 100%);
+}
+
+.landing-phase-white-soft {
+  background: linear-gradient(180deg, #dce2ea 0%, #f0f3f8 100%);
+}
+
+.landing-phase-white {
+  background: linear-gradient(180deg, #f3f6fb 0%, #ffffff 100%);
 }
 
 .shared-topbar-menu-item {
