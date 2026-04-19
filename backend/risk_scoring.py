@@ -33,7 +33,7 @@ def score_repos(request: RepoRiskRequest):
             probs = clf.predict_proba(X)[:, 1]
             avg_score = float(probs.mean())
             max_score = float(probs.max())
-            flagged = int((probs >= 0.5).sum())
+            flagged = int((probs >= 0.6).sum())
 
         results.append({
             "repo": repo.repo,

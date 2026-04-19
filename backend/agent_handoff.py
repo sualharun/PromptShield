@@ -95,7 +95,7 @@ def inspect_handoff(envelope: HandoffEnvelope):
         })
 
     # Cross-repo boundary check
-    if cross_repo and ml_score >= 0.5:
+    if cross_repo and ml_score >= 0.6:
         sev = "critical" if sensitivity == "confidential" else "high"
         violations.append({
             "type": "CROSS_REPO_BOUNDARY_VIOLATION",
@@ -133,7 +133,7 @@ def inspect_handoff(envelope: HandoffEnvelope):
         "blocked": blocked,
         "recommendation": (
             "Block this handoff. Critical violations detected." if blocked else
-            "Review before executing. Elevated risk score." if ml_score >= 0.5 else
+            "Review before executing. Elevated risk score." if ml_score >= 0.6 else
             "Handoff appears safe to execute."
         )
     }

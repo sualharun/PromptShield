@@ -69,6 +69,14 @@ SINK_METHODS: Set[str] = {
     "apredict",
 }
 
+# Dangerous execution sinks - user input flowing here is always a finding
+EXECUTION_SINK_NAMES = {
+    "cursor.execute", "db.execute", "session.execute", "conn.execute",
+    "subprocess.run", "subprocess.call", "subprocess.Popen",
+    "os.system", "os.popen", "eval", "exec",
+    "pickle.loads", "yaml.load", "marshal.loads",
+}
+
 # Qualified attribute chains indicating LLM API calls
 SINK_ATTR_CHAINS: List[Tuple[str, ...]] = [
     ("chat", "completions", "create"),
@@ -132,6 +140,8 @@ def _names_in_expr(node: ast.AST) -> Set[str]:
     for child in ast.walk(node):
         if isinstance(child, ast.Name):
             names.add(child.id)
+        if isinstance(child, ast.Attribute) and isinstance(child.value, ast.Name):
+            names.add(f"{child.value.id}__{child.attr}")
     return names
 
 
@@ -219,6 +229,14 @@ def _is_sink_call(node: ast.Call) -> Optional[str]:
     if isinstance(node.func, ast.Name):
         if node.func.id in ("LLMChain", "ChatOpenAI", "ChatAnthropic"):
             return node.func.id
+        if node.func.id in EXECUTION_SINK_NAMES:
+            return node.func.id
+
+    if isinstance(node.func, ast.Attribute):
+        chain = _attr_chain(node.func)
+        dotted = ".".join(chain)
+        if dotted in EXECUTION_SINK_NAMES:
+            return dotted
 
     return None
 
@@ -300,6 +318,13 @@ def analyze(source_code: str) -> List[DataflowFinding]:
 
                 for tgt in targets:
                     tainted[tgt] = TaintedVar(tgt, source_desc, lineno)
+
+                # Also taint self.attr style targets
+                if isinstance(node, ast.Assign):
+                    for t in node.targets:
+                        if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name):
+                            attr_key = f"{t.value.id}__{t.attr}"
+                            tainted[attr_key] = TaintedVar(attr_key, source_desc, lineno)
 
         # --- f-string / format / concat that creates a new tainted string ---
         if isinstance(node, ast.Assign) and node.value is not None:
@@ -437,6 +462,13 @@ DANGEROUS_SINKS: Dict[str, str] = {
     "shutil.rmtree": "recursive directory deletion",
     "eval": "code execution",
     "exec": "code execution",
+    "open": "unrestricted file access",
+    "os.listdir": "unrestricted directory listing",
+    "os.scandir": "unrestricted directory listing",
+    "glob.glob": "unrestricted file globbing",
+    "pickle.loads": "unsafe deserialization",
+    "yaml.load": "unsafe YAML deserialization",
+    "marshal.loads": "unsafe marshal deserialization",
 }
 
 DANGEROUS_SQL_SINKS = {"cursor.execute", "db.execute", "session.execute", "engine.execute", "conn.execute"}

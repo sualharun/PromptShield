@@ -139,16 +139,13 @@ def test_invalid_python_returns_empty():
 
 
 def test_non_llm_sink_not_flagged():
-    """A tainted var going into print() or db.execute() should not be flagged."""
+    """A tainted var going into print() should not be flagged."""
     code = textwrap.dedent("""\
         user_msg = input()
         print(user_msg)
-        db.execute(user_msg)
     """)
     results = analyze(code)
     assert len(results) == 0
-
-
 def test_langchain_chain_invoke():
     code = textwrap.dedent("""\
         from langchain.chains import LLMChain
@@ -172,3 +169,104 @@ def test_multi_hop_taint():
     results = analyze(code)
     assert len(results) >= 1
     assert "completions.create" in results[0].sink_call
+
+
+# ── New tests: tool body analysis + reverse taint ──────────────────────────
+
+def test_tool_with_subprocess():
+    code = """
+@tool
+def run_cmd(cmd: str) -> str:
+    subprocess.run(cmd, shell=True)
+"""
+    results = scan_dataflow(code)
+    types = [r["type"] for r in results]
+    assert "TOOL_PARAM_TO_SINK" in types
+
+def test_tool_with_sql():
+    code = """
+@tool
+def run_query(query: str) -> str:
+    cursor.execute(query)
+"""
+    results = scan_dataflow(code)
+    types = [r["type"] for r in results]
+    assert "TOOL_PARAM_TO_SINK" in types
+
+def test_tool_with_eval():
+    code = """
+@tool
+def evaluate(expr: str) -> str:
+    return eval(expr)
+"""
+    results = scan_dataflow(code)
+    types = [r["type"] for r in results]
+    assert "TOOL_PARAM_TO_SINK" in types
+
+def test_tool_with_file():
+    code = """
+@tool
+def read_file(path: str) -> str:
+    return open(path).read()
+"""
+    results = scan_dataflow(code)
+    assert len(results) > 0
+
+def test_safe_tool():
+    code = """
+@tool
+def get_time() -> str:
+    return datetime.now().isoformat()
+"""
+    results = scan_dataflow(code)
+    assert results == []
+
+def test_llm_output_exec():
+    code = """
+response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+code = response.content[0].text
+exec(code)
+"""
+    results = scan_dataflow(code)
+    types = [r["type"] for r in results]
+    assert "LLM_OUTPUT_EXEC" in types
+
+def test_llm_output_shell():
+    code = """
+response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+cmd = response.content[0].text
+subprocess.run(cmd)
+"""
+    results = scan_dataflow(code)
+    types = [r["type"] for r in results]
+    assert "LLM_OUTPUT_SHELL" in types
+
+def test_llm_output_sql():
+    code = """
+response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+query = response.content[0].text
+cursor.execute(query)
+"""
+    results = scan_dataflow(code)
+    types = [r["type"] for r in results]
+    assert "LLM_OUTPUT_SQL" in types
+
+def test_safe_llm_usage():
+    code = """
+response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+print(response.content[0].text)
+"""
+    results = scan_dataflow(code)
+    dangerous = [r for r in results if r["type"] in ("LLM_OUTPUT_EXEC", "LLM_OUTPUT_SHELL", "LLM_OUTPUT_SQL")]
+    assert dangerous == []
+
+def test_class_attribute_taint():
+    """Taint through self.attr should be tracked."""
+    code = textwrap.dedent("""\
+        class Agent:
+            def handle(self):
+                self.query = request.form['data']
+                cursor.execute(self.query)
+    """)
+    results = scan_dataflow(code)
+    assert len(results) >= 1
