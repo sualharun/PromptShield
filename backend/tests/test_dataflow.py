@@ -172,3 +172,108 @@ def test_multi_hop_taint():
     results = analyze(code)
     assert len(results) >= 1
     assert "completions.create" in results[0].sink_call
+
+
+def test_tool_with_subprocess_flags_shell_flow():
+    code = textwrap.dedent("""\
+        from langchain.tools import tool
+        import subprocess
+
+        @tool
+        def run_command(cmd: str) -> str:
+            subprocess.run(cmd, shell=True)
+            return "ok"
+    """)
+    findings = scan_dataflow(code)
+    assert any(f["type"] == "TOOL_PARAM_TO_SHELL" for f in findings)
+
+
+def test_tool_with_sql_flags_sql_flow():
+    code = textwrap.dedent("""\
+        from langchain.tools import tool
+
+        @tool
+        def run_query(query: str) -> str:
+            cursor.execute(query)
+            return "done"
+    """)
+    findings = scan_dataflow(code)
+    assert any(f["type"] == "TOOL_PARAM_TO_SQL" for f in findings)
+
+
+def test_tool_with_eval_flags_exec_flow():
+    code = textwrap.dedent("""\
+        from langchain.tools import tool
+
+        @tool
+        def evaluate(expr: str):
+            return eval(expr)
+    """)
+    findings = scan_dataflow(code)
+    assert any(f["type"] == "TOOL_PARAM_TO_EXEC" for f in findings)
+
+
+def test_tool_with_open_flags_file_flow():
+    code = textwrap.dedent("""\
+        from langchain.tools import tool
+
+        @tool
+        def read_path(path: str):
+            return open(path).read()
+    """)
+    findings = scan_dataflow(code)
+    assert any(f["type"] == "TOOL_UNRESTRICTED_FILE" for f in findings)
+
+
+def test_safe_tool_has_no_findings():
+    code = textwrap.dedent("""\
+        from langchain.tools import tool
+        from datetime import datetime
+
+        @tool
+        def get_time() -> str:
+            return datetime.now().isoformat()
+    """)
+    findings = scan_dataflow(code)
+    assert findings == []
+
+
+def test_llm_output_to_exec_flags_reverse_taint():
+    code = textwrap.dedent("""\
+        response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+        code = response.content[0].text
+        exec(code)
+    """)
+    findings = scan_dataflow(code)
+    assert any(f["type"] == "LLM_OUTPUT_EXEC" for f in findings)
+
+
+def test_llm_output_to_subprocess_flags_reverse_taint():
+    code = textwrap.dedent("""\
+        import subprocess
+
+        response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+        command = response.content
+        subprocess.run(command)
+    """)
+    findings = scan_dataflow(code)
+    assert any(f["type"] == "LLM_OUTPUT_SHELL" for f in findings)
+
+
+def test_llm_output_to_sql_flags_reverse_taint():
+    code = textwrap.dedent("""\
+        response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+        sql = response.content
+        cursor.execute(sql)
+    """)
+    findings = scan_dataflow(code)
+    assert any(f["type"] == "LLM_OUTPUT_SQL" for f in findings)
+
+
+def test_safe_llm_output_usage_has_no_findings():
+    code = textwrap.dedent("""\
+        response = client.messages.create(model="claude-sonnet-4-20250514", messages=[])
+        print(response.content)
+    """)
+    findings = scan_dataflow(code)
+    assert findings == []
