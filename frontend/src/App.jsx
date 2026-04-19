@@ -166,7 +166,7 @@ function AppShell() {
                 : 'border-carbon-border hover:bg-carbon-layer'
             }`}
           >
-            Home
+            PromptShield
           </button>
           <nav className="flex min-w-0 flex-1 items-stretch overflow-x-auto text-[13px]">
             {NAV.map((item) => (
