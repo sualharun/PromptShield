@@ -16,7 +16,7 @@ const NAV_DROPDOWNS = [
     key: 'product',
     label: 'Product',
     previewTitle: 'Review prompts, repo instructions, and generated diffs before merge.',
-    previewBody: 'PromptShield runs 7 static-rule categories plus a semantic audit, scores the result, and attaches evidence to the PR gate.',
+    previewBody: 'PromptShield runs static rules, AST dataflow, and a Gemini semantic audit across prompts, tool surfaces, and generated diffs — then attaches evidence to the PR gate.',
     columns: [
       {
         heading: 'Platform',
@@ -191,7 +191,7 @@ const METRICS = [
   { value: '15+', label: 'detection rules including agent tool, output handling, and RAG security' },
   { value: '14', label: 'structural jailbreak payloads used for adversarial testing' },
   { value: '96%', label: 'F1 on the built-in vulnerable versus safe benchmark' },
-  { value: 'CWE + OWASP', label: 'LLM07 and LLM02 mappings attached to each finding for audit' },
+  { value: 'CWE + OWASP', label: 'LLM01, LLM05, and LLM06 (2025) mappings attached to each finding for audit' },
 ]
 
 const COVERAGE_SURFACES = [
@@ -985,7 +985,7 @@ export default function LandingPage({ onEnterDashboard }) {
                 Metrics
               </p>
               <h2 className="mt-4 text-[40px] font-light leading-[1.02] tracking-[-0.04em] text-[#16213e]">
-                Built around the real detection system already in this repo.
+                Hard numbers from the same pipeline that runs on every PR.
               </h2>
             </div>
             <button

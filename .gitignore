@@ -3,12 +3,24 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+.pytest_cache/
 *.db
+
+# Logs
+*.log
+
+# Benchmark artifacts (reproducible via scripts)
+backend/benchmark_chart.png
+backend/iteration_chart.png
+backend/benchmark_results.json
+backend/three_layer_results.json
 
 # Node
 node_modules/
 dist/
 .vite/
+# Single lockfile (npm); prevent stray pnpm lock
+pnpm-lock.yaml
 
 # Env
 .env
