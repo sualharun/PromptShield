@@ -320,7 +320,7 @@ function FloatIn({ children, className = '', delay = 0, reduced }) {
   )
 }
 
-export default function LandingPage({ onEnterDashboard }) {
+export default function LandingPage({ onEnterDashboard, onEnterLogin }) {
   const reduced = useReducedMotion()
   const [openMenu, setOpenMenu] = useState(null)
   const [demoStep, setDemoStep] = useState(0)
@@ -550,7 +550,7 @@ export default function LandingPage({ onEnterDashboard }) {
 
             <div className="ml-auto flex items-center gap-3">
               <button
-                onClick={onEnterDashboard}
+                onClick={onEnterLogin}
                 className={`px-4 py-2 text-[14px] transition-colors duration-500 ${
                   scrolledPastHero ? 'text-[#16213e] hover:text-[#de715d]' : 'text-white hover:text-[#f3cabf]'
                 }`}

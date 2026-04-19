@@ -11,7 +11,7 @@ import LoginPage from './pages/LoginPage.jsx'
 import AgentsPage from './pages/AgentsPage.jsx'
 import AgentToolsPage from './pages/AgentToolsPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
-import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
+import { useTheme } from './components/ThemeToggle.jsx'
 import AuthBadge from './components/AuthBadge.jsx'
 import { AuthProvider, useAuth } from './auth/AuthContext.jsx'
 import { fetchWithTimeout, asNetworkErrorMessage } from './lib/fetchWithTimeout.js'
@@ -120,7 +120,10 @@ function AppShell() {
   const isHome = view === 'home'
   const isLightShell = true
   const showSidebar = view !== 'home' && view !== 'login' && view !== 'dashboard'
-  const goLogin = () => setView('login')
+  const goLogin = useCallback(() => {
+    setPendingView(null)
+    setView('login')
+  }, [])
 
   const goDashboard = useCallback(() => {
     setView('dashboard')
@@ -157,30 +160,15 @@ function AppShell() {
         >
           <button
             onClick={() => setView('home')}
-            className={`flex items-center gap-3 border-r px-4 transition-colors ${
+            className={`flex items-center border-r px-4 text-[15px] font-medium transition-colors ${
               isLightShell
                 ? 'border-[#de715d]/28 hover:bg-white/8'
                 : 'border-carbon-border hover:bg-carbon-layer'
             }`}
           >
-            <span aria-hidden className="font-mono text-[15px] font-bold tracking-tight">IBM</span>
-            <span className="flex flex-col items-start leading-tight">
-              <span className="text-[14px] font-medium">PromptShield</span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-carbon-text-secondary">
-                Security · Prompt Audit
-              </span>
-            </span>
+            Home
           </button>
-          <div
-            className={`hidden min-w-[140px] items-center border-r px-4 text-[12px] md:flex ${
-              isLightShell
-                ? 'border-[#de715d]/28 text-white/66'
-                : 'border-carbon-border text-carbon-text-secondary'
-            }`}
-          >
-            All projects
-          </div>
-          <nav className="flex items-stretch text-[13px]">
+          <nav className="flex min-w-0 flex-1 items-stretch overflow-x-auto text-[13px]">
             {NAV.map((item) => (
               <button
                 key={item.id}
@@ -240,15 +228,7 @@ function AppShell() {
                 : 'border-carbon-border text-carbon-text-secondary'
             }`}
           >
-            <span className="flex items-center gap-2">
-              <span className={`h-1.5 w-1.5 ${isLightShell ? 'bg-[#de715d]' : 'bg-ibm-green-50'}`} />
-              <span>API connected</span>
-            </span>
-            <span className="hidden font-mono uppercase tracking-wider md:inline">
-              v0.3.0
-            </span>
             <AuthBadge onSignIn={goLogin} />
-            <ThemeToggle />
           </div>
         </header>
       )}
@@ -272,6 +252,7 @@ function AppShell() {
           )}
           {view === 'home' && (
             <LandingPage
+              onEnterLogin={goLogin}
               onEnterDashboard={goDashboard}
               onEnterScan={() => setView('scan')}
             />
@@ -302,7 +283,7 @@ function AppShell() {
           {view === 'login' && (
             <LoginPage
               onLoggedIn={() => {
-                setView(pendingView || 'pm')
+                setView(pendingView || 'dashboard')
                 setPendingView(null)
               }}
             />
