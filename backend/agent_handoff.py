@@ -29,6 +29,11 @@ class HandoffEnvelope(BaseModel):
 
 DANGEROUS_TOOLS = {"shell", "exec", "bash", "eval", "subprocess", "system", "rm", "curl", "wget"}
 DANGEROUS_PATTERNS = [
+    "api.openai.com", "api.anthropic.com", "hooks.slack.com", "webhook",
+    "requests.get", "requests.post", "fetch(", "axios", "http.get",
+    "authorization: bearer", "x-api-key", "access_token", "api_key",
+    "s3.amazonaws.com", "storage.googleapis.com", "blob.core.windows",
+    "sendgrid", "twilio", "stripe.com", "database_url", "connection_string",
     "ignore previous", "ignore all", "disregard", "override instructions",
     "you are now", "act as", "exfil", "send to", "post to http",
     "curl ", "wget ", "rm -rf", "subprocess", "os.system"
