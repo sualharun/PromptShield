@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from './fetchWithTimeout.js'
+
 const STORAGE_KEY = 'promptshield_agent_accounts_v1'
 
 export const AGENT_PROVIDERS = [
@@ -49,6 +51,54 @@ export function saveAgentAccounts(accounts) {
   const storage = safeLocalStorage()
   if (!storage) return
   storage.setItem(STORAGE_KEY, JSON.stringify(accounts))
+}
+
+function fromApiAccount(account) {
+  return {
+    id: account.id,
+    provider: account.provider,
+    displayName: account.displayName,
+    githubHandle: account.githubHandle,
+    repoScope: account.repoScope || '',
+    createdAt: account.createdAt,
+  }
+}
+
+export async function fetchAgentAccountsApi() {
+  const response = await fetchWithTimeout('/api/agents/accounts')
+  if (!response.ok) {
+    throw new Error(`Failed to load agent accounts (${response.status})`)
+  }
+  const data = await response.json()
+  return Array.isArray(data) ? data.map(fromApiAccount) : []
+}
+
+export async function createAgentAccountApi(account) {
+  const response = await fetchWithTimeout('/api/agents/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      provider: account.provider,
+      displayName: account.displayName,
+      githubHandle: account.githubHandle,
+      repoScope: account.repoScope || '',
+    }),
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}))
+    throw new Error(detail.detail || `Failed to create agent account (${response.status})`)
+  }
+  return fromApiAccount(await response.json())
+}
+
+export async function deleteAgentAccountApi(accountId) {
+  const response = await fetchWithTimeout(`/api/agents/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}))
+    throw new Error(detail.detail || `Failed to remove account (${response.status})`)
+  }
 }
 
 export function providerMeta(providerId) {

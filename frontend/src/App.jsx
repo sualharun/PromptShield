@@ -15,7 +15,13 @@ import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
 import AuthBadge from './components/AuthBadge.jsx'
 import { AuthProvider, useAuth } from './auth/AuthContext.jsx'
 import { fetchWithTimeout, asNetworkErrorMessage } from './lib/fetchWithTimeout.js'
-import { loadAgentAccounts, saveAgentAccounts } from './lib/agentAccounts.js'
+import {
+  createAgentAccountApi,
+  deleteAgentAccountApi,
+  fetchAgentAccountsApi,
+  loadAgentAccounts,
+  saveAgentAccounts,
+} from './lib/agentAccounts.js'
 
 const API = ''
 
@@ -50,12 +56,30 @@ function AppShell() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [agentAccounts, setAgentAccounts] = useState(() => loadAgentAccounts())
+  const [agentAccounts, setAgentAccounts] = useState([])
   useTheme()
 
   useEffect(() => {
     saveAgentAccounts(agentAccounts)
   }, [agentAccounts])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const accounts = await fetchAgentAccountsApi()
+        if (cancelled) return
+        setAgentAccounts(accounts)
+        saveAgentAccounts(accounts)
+      } catch {
+        if (cancelled) return
+        setAgentAccounts(loadAgentAccounts())
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -139,6 +163,17 @@ function AppShell() {
     [authLoading, user]
   )
 
+  const addAgentAccount = useCallback(async (account) => {
+    const created = await createAgentAccountApi(account)
+    setAgentAccounts((current) => [created, ...current.filter((item) => item.id !== created.id)])
+    return created
+  }, [])
+
+  const removeAgentAccount = useCallback(async (id) => {
+    await deleteAgentAccountApi(id)
+    setAgentAccounts((current) => current.filter((item) => item.id !== id))
+  }, [])
+
   return (
     <div
       className={`flex h-full min-h-screen flex-col ${
@@ -166,8 +201,11 @@ function AppShell() {
             <span aria-hidden className="font-mono text-[15px] font-bold tracking-tight">IBM</span>
             <span className="flex flex-col items-start leading-tight">
               <span className="text-[14px] font-medium">PromptShield</span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-carbon-text-secondary">
-                Security · Prompt Audit
+              <span
+                className="text-[12px] font-semibold tracking-normal text-white"
+                style={{ fontFamily: '"SF Pro Text", "Inter", "Segoe UI", "IBM Plex Sans", sans-serif' }}
+              >
+                Security Prompt Audit
               </span>
             </span>
           </button>
@@ -288,12 +326,8 @@ function AppShell() {
           {view === 'agents' && (
             <AgentsPage
               agentAccounts={agentAccounts}
-              onAddAccount={(account) =>
-                setAgentAccounts((current) => [account, ...current])
-              }
-              onRemoveAccount={(id) =>
-                setAgentAccounts((current) => current.filter((item) => item.id !== id))
-              }
+              onAddAccount={addAgentAccount}
+              onRemoveAccount={removeAgentAccount}
               scans={history}
             />
           )}

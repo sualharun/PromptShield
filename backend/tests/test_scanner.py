@@ -89,3 +89,50 @@ def test_static_scan_no_false_positive_on_clean_text():
     text = "Please help the user understand the difference between a list and a tuple."
     findings = static_scan(text)
     assert findings == []
+
+
+def test_static_scan_detects_insecure_upload_handler():
+    code = """
+from pathlib import Path
+from fastapi import UploadFile, File
+
+UPLOAD_DIR = Path("./uploads")
+
+async def insecure_upload(file: UploadFile = File(...)):
+    raw = await file.read()
+    dest = UPLOAD_DIR / file.filename
+    dest.write_bytes(raw)
+"""
+    findings = static_scan(code, language="python")
+    upload = [f for f in findings if f.get("type") == "INSECURE_FILE_UPLOAD"]
+    assert upload, "expected INSECURE_FILE_UPLOAD finding"
+    assert upload[0]["severity"] in {"high", "critical"}
+
+
+def test_static_scan_upload_handler_with_guards_not_flagged():
+    code = """
+import os
+from pathlib import Path
+from fastapi import UploadFile, File, HTTPException
+
+UPLOAD_DIR = Path("./uploads").resolve()
+ALLOWED_MIME = {"image/png", "image/jpeg"}
+ALLOWED_EXT = {".png", ".jpg", ".jpeg"}
+MAX_UPLOAD_SIZE = 2_000_000
+
+async def safe_upload(file: UploadFile = File(...)):
+    if file.content_type not in ALLOWED_MIME:
+        raise HTTPException(status_code=400)
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=400)
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXT:
+        raise HTTPException(status_code=400)
+    dest = (UPLOAD_DIR / file.filename).resolve()
+    if not str(dest).startswith(str(UPLOAD_DIR)):
+        raise HTTPException(status_code=400)
+    dest.write_bytes(raw)
+"""
+    findings = static_scan(code, language="python")
+    assert not any(f.get("type") == "INSECURE_FILE_UPLOAD" for f in findings)

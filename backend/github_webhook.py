@@ -14,6 +14,8 @@ Flow on a `pull_request` event (opened/synchronize/reopened):
 
 import json
 import logging
+import re
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
@@ -22,6 +24,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
 from scan_pipeline import parallel_core_scan
+from ai_analyzer import ai_scan
 from config import settings
 import repositories as repos
 import agent_registry
@@ -110,6 +113,7 @@ SEVERITY_LABELS = {
     "medium": "🟡 MEDIUM",
     "low": "🔵 LOW",
 }
+RISK_REDUCTION_ESTIMATE = {"critical": 40, "high": 20, "medium": 8, "low": 3}
 
 
 def _comment_body(f: Dict[str, Any]) -> str:
@@ -135,16 +139,108 @@ def _comment_body(f: Dict[str, Any]) -> str:
     )
 
 
-def _scan_one_file(file_obj: Dict[str, Any], content: str) -> List[Dict[str, Any]]:
+def _top_attack_paths_markdown(findings: List[Dict[str, Any]], limit: int = 3) -> str:
+    if not findings:
+        return ""
+    sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    ranked = sorted(
+        findings,
+        key=lambda f: (
+            sev_rank.get((f.get("severity") or "low").lower(), 9),
+            -float(f.get("confidence", 0) or 0),
+        ),
+    )
+    lines = ["### Top Attack Paths", ""]
+    shown = 0
+    for f in ranked:
+        if shown >= limit:
+            break
+        sev = (f.get("severity") or "low").lower()
+        path = f.get("path") or "unknown file"
+        line = f.get("line_number")
+        where = f"{path}:{line}" if isinstance(line, int) else path
+        owner = (f.get("owner_team") or f.get("owner") or "unassigned").strip() or "unassigned"
+        fix = (f.get("remediation") or "Apply the recommended guard/validation.").strip()
+        if len(fix) > 180:
+            fix = fix[:177] + "..."
+        reduction = RISK_REDUCTION_ESTIMATE.get(sev, 3)
+        lines.append(
+            f"{shown + 1}. **{f.get('type', 'UNKNOWN')}** at `{where}` "
+            f"(owner/team: `{owner}`)  \n"
+            f"   Fix: {fix}  \n"
+            f"   Expected risk reduction: **-{reduction}**"
+        )
+        shown += 1
+    return "\n".join(lines)
+
+
+_ANCHOR_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{3,}")
+
+
+def _anchor_missing_line_numbers(
+    findings: List[Dict[str, Any]],
+    content: str,
+    added_lines: set[int],
+) -> None:
+    """Best-effort line anchoring for findings with no line_number.
+
+    We keep this intentionally lightweight: token overlap against changed lines.
+    """
+    if not findings or not added_lines:
+        return
+    lines = content.splitlines()
+    if not lines:
+        return
+
+    for f in findings:
+        if isinstance(f.get("line_number"), int):
+            continue
+        tokens: set[str] = set()
+        evidence = str(f.get("evidence") or "").replace(" ⏎ ", " ")
+        title = str(f.get("title") or "")
+        desc = str(f.get("description") or "")
+        for src in (evidence, title, desc):
+            for tok in _ANCHOR_TOKEN.findall(src):
+                low = tok.lower()
+                if len(low) >= 4 and low not in {"this", "that", "with", "from", "into", "without"}:
+                    tokens.add(low)
+        if not tokens:
+            continue
+
+        best_line = None
+        best_score = 0
+        for ln in added_lines:
+            if ln < 1 or ln > len(lines):
+                continue
+            line_text = lines[ln - 1].lower()
+            score = sum(1 for t in tokens if t in line_text)
+            if score > best_score:
+                best_score = score
+                best_line = ln
+        if best_line is not None and best_score >= 2:
+            f["line_number"] = int(best_line)
+
+
+def _scan_one_file(
+    file_obj: Dict[str, Any],
+    content: str,
+    *,
+    include_ai: bool,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     language = detect_language_from_filename(file_obj.get("filename") or "")
-    static_results, ai_results, dataflow_results = parallel_core_scan(content, language)
+    static_results, ai_results, dataflow_results = parallel_core_scan(
+        content,
+        language,
+        include_ai=include_ai,
+    )
     merged = merge_findings(static_results + dataflow_results, ai_results)
     added = parse_added_lines(file_obj.get("patch"))
+    _anchor_missing_line_numbers(merged, content, added)
     on_diff = filter_findings_to_lines(merged, added)
-    for f in on_diff:
+    for f in merged:
         f["path"] = file_obj["filename"]
         f["language"] = language
-    return on_diff
+    return merged, on_diff
 
 
 def _is_text_file(filename: str) -> bool:
@@ -164,6 +260,7 @@ def _build_check_payload(
     files_scanned: int,
     scan_id: int | None,
     threshold: int,
+    findings: List[Dict[str, Any]] | None = None,
     breakdown: Dict[str, Any] | None = None,
     policy_decision: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
@@ -198,6 +295,9 @@ def _build_check_payload(
     breakdown_md = render_breakdown_markdown(breakdown) if breakdown else ""
     if breakdown_md:
         summary_lines.append(breakdown_md)
+    path_md = _top_attack_paths_markdown(findings or [])
+    if path_md:
+        summary_lines.append(path_md)
     if policy_decision is not None:
         summary_lines.append(render_policy_summary(policy_decision))
     if detail_url:
@@ -247,9 +347,12 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
         check_id = check["id"]
 
         all_findings: List[Dict[str, Any]] = []
+        commentable_findings: List[Dict[str, Any]] = []
         files_scanned = 0
         target_set: set[str] = set()
         dep_files: Dict[str, str] = {}
+        scanned_file_objs: List[Dict[str, Any]] = []
+        fast_gate = bool(settings.GITHUB_WEBHOOK_FAST_SCAN)
         try:
             files = gh.list_pr_files(owner, name, number)
             for f in files:
@@ -264,7 +367,14 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
                 if not content or len(content) > settings.MAX_INPUT_CHARS:
                     continue
                 files_scanned += 1
-                all_findings.extend(_scan_one_file(f, content))
+                scanned_file_objs.append(f)
+                score_findings, inline_findings = _scan_one_file(
+                    f,
+                    content,
+                    include_ai=not fast_gate,
+                )
+                all_findings.extend(score_findings)
+                commentable_findings.extend(inline_findings)
                 target_set.update(detect_llm_targets(content))
                 lower = filename.lower()
                 if lower.endswith("requirements.txt") or lower.endswith("package.json"):
@@ -407,13 +517,14 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
                     "side": "RIGHT",
                     "body": _comment_body(f),
                 }
-                for f in all_findings
+                for f in commentable_findings
                 if f.get("path") and isinstance(f.get("line_number"), int)
             ]
             if comments:
                 review_body = (
                     f"PromptShield found **{len(all_findings)} finding(s)** "
-                    f"in this PR (risk score **{score}/100**)."
+                    f"in this PR (risk score **{score}/100**). "
+                    f"Inline comments were placed on **{len(commentable_findings)}** changed line(s)."
                 )
                 gh.create_review(
                     owner, name, number, head_sha, review_body, comments, "COMMENT"
@@ -430,10 +541,32 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
                     files_scanned,
                     scan_id,
                     settings.RISK_GATE_THRESHOLD,
+                    all_findings,
                     breakdown,
                     policy_decision,
                 ),
             )
+
+            # Optional stage-2 semantic enrichment (non-blocking):
+            # run Gemini-only pass after the fast gate so check latency stays low.
+            if fast_gate and settings.GITHUB_WEBHOOK_AI_ENRICHMENT:
+                t = threading.Thread(
+                    target=_enrich_scan_with_ai,
+                    kwargs={
+                        "owner": owner,
+                        "repo_name": name,
+                        "pr_number": number,
+                        "head_sha": head_sha,
+                        "token": token,
+                        "scan_id": scan_id,
+                        "base_findings": all_findings,
+                        "base_score": score,
+                        "base_counts": counts,
+                        "files": scanned_file_objs,
+                    },
+                    daemon=True,
+                )
+                t.start()
 
             # Gate decision: policy wins if present, else threshold.
             gate_failed = (
@@ -489,6 +622,101 @@ def _process_pr(payload: Dict[str, Any]) -> Tuple[int, Dict[str, int], int | Non
             raise
 
 
+def _enrich_scan_with_ai(
+    *,
+    owner: str,
+    repo_name: str,
+    pr_number: int,
+    head_sha: str,
+    token: str,
+    scan_id: str,
+    base_findings: List[Dict[str, Any]],
+    base_score: int,
+    base_counts: Dict[str, int],
+    files: List[Dict[str, Any]],
+) -> None:
+    """Stage-2 optional enrichment: attach Gemini findings after fast gate."""
+    try:
+        ai_findings: List[Dict[str, Any]] = []
+        with _make_client(token) as gh:
+            for f in files:
+                filename = f.get("filename") or ""
+                if not filename or not _is_text_file(filename):
+                    continue
+                content = gh.get_file_content(owner, repo_name, filename, head_sha)
+                if not content or len(content) > settings.MAX_INPUT_CHARS:
+                    continue
+                raw = ai_scan(content) or []
+                if not raw:
+                    continue
+                added = parse_added_lines(f.get("patch"))
+                _anchor_missing_line_numbers(raw, content, added)
+                for item in raw:
+                    item["path"] = filename
+                    item["language"] = detect_language_from_filename(filename)
+                ai_findings.extend(raw)
+
+        if not ai_findings:
+            return
+
+        merged = merge_findings(base_findings, ai_findings)
+        enriched_score = calculate_risk_score(merged)
+        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for f in merged:
+            sev = (f.get("severity") or "low").lower()
+            if sev in counts:
+                counts[sev] += 1
+
+        static_count = sum(1 for x in merged if x.get("source") != "ai")
+        ai_count = sum(1 for x in merged if x.get("source") == "ai")
+        dataflow_count = sum(1 for x in merged if x.get("source") == "dataflow")
+        breakdown = compute_breakdown(
+            merged,
+            static_count,
+            ai_count,
+            dataflow_count=dataflow_count,
+        )
+
+        repos.update_scan(
+            scan_id,
+            {
+                "findings": merged,
+                "risk_score": enriched_score,
+                "counts": {
+                    "static": static_count,
+                    "ai": ai_count,
+                    "total": len(merged),
+                },
+                "score_breakdown": breakdown,
+                "ai_enrichment": {
+                    "enabled": True,
+                    "added_findings": len(ai_findings),
+                    "base_risk_score": base_score,
+                    "enriched_risk_score": enriched_score,
+                    "base_counts": base_counts,
+                    "enriched_counts": counts,
+                    "completed_at": datetime.now(timezone.utc),
+                },
+            },
+        )
+
+        logger.info(
+            "github PR AI enrichment complete",
+            extra={
+                "event": "github_webhook_ai_enrichment",
+                "repo": f"{owner}/{repo_name}",
+                "pr": pr_number,
+                "scan_id": scan_id,
+                "added_findings": len(ai_findings),
+            },
+        )
+    except Exception:
+        logger.exception(
+            "github PR AI enrichment failed",
+            extra={"event": "github_webhook_ai_enrichment_error", "scan_id": scan_id},
+        )
+
+
 def _scan_pr_for_sync(
     owner: str, repo_name: str, full: str, pr: Dict[str, Any], token: str
 ) -> Dict[str, Any] | None:
@@ -525,7 +753,12 @@ def _scan_pr_for_sync(
                 if not content or len(content) > settings.MAX_INPUT_CHARS:
                     continue
                 files_scanned += 1
-                all_findings.extend(_scan_one_file(f, content))
+                score_findings, _inline_findings = _scan_one_file(
+                    f,
+                    content,
+                    include_ai=not settings.GITHUB_WEBHOOK_FAST_SCAN,
+                )
+                all_findings.extend(score_findings)
                 target_set.update(detect_llm_targets(content))
 
             score = calculate_risk_score(all_findings)

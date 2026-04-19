@@ -408,12 +408,16 @@ def _propagate_risk(
 
 def _find_risk_chains(pr_node_id: str, nodes_by_id: Dict[str, Dict], edges: List[Dict]) -> List[Dict]:
     adj = defaultdict(list)
+    edge_ids = set()
     for e in edges:
         adj[e["source"]].append(e["target"])
+        edge_ids.add(f"{e['source']}->{e['target']}")
 
     chains = []
     queue = deque([(pr_node_id, [pr_node_id])])
     visited_paths = set()
+    fallback_path: List[str] | None = None
+    fallback_score = -1.0
 
     while queue:
         node_id, path = queue.popleft()
@@ -426,18 +430,50 @@ def _find_risk_chains(pr_node_id: str, nodes_by_id: Dict[str, Dict], edges: List
                 continue
             visited_paths.add(key)
             n = nodes_by_id.get(nxt, {})
+            node_score = float(n.get("risk_score", 0))
+            if len(new_path) >= 2 and node_score > fallback_score:
+                fallback_score = node_score
+                fallback_path = new_path
             if n.get("type") in {"vulnerable_repo", "maintainer"} and n.get("risk_score", 0) >= 50:
+                chain_edge_ids = []
+                for i in range(len(new_path) - 1):
+                    eid = f"{new_path[i]}->{new_path[i + 1]}"
+                    if eid in edge_ids:
+                        chain_edge_ids.append(eid)
                 chains.append(
                     {
                         "path": [nodes_by_id[p].get("name", p) for p in new_path if p in nodes_by_id],
+                        "node_ids": new_path,
+                        "edge_ids": chain_edge_ids,
                         "risk_score": round(float(n.get("risk_score", 0)), 1),
                         "terminal_type": n.get("type"),
+                        "fallback": False,
                     }
                 )
             queue.append((nxt, new_path))
 
     chains.sort(key=lambda c: c["risk_score"], reverse=True)
-    return chains[:5]
+    if chains:
+        return chains[:5]
+
+    if fallback_path and len(fallback_path) >= 2:
+        terminal = nodes_by_id.get(fallback_path[-1], {})
+        chain_edge_ids = []
+        for i in range(len(fallback_path) - 1):
+            eid = f"{fallback_path[i]}->{fallback_path[i + 1]}"
+            if eid in edge_ids:
+                chain_edge_ids.append(eid)
+        return [
+            {
+                "path": [nodes_by_id[p].get("name", p) for p in fallback_path if p in nodes_by_id],
+                "node_ids": fallback_path,
+                "edge_ids": chain_edge_ids,
+                "risk_score": round(float(terminal.get("risk_score", 0)), 1),
+                "terminal_type": terminal.get("type", "node"),
+                "fallback": True,
+            }
+        ]
+    return []
 
 
 def generate_risk_narrative(graph_data: Dict) -> str:

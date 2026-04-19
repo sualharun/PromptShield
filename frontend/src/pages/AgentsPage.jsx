@@ -40,14 +40,17 @@ export default function AgentsPage({ agentAccounts, onAddAccount, onRemoveAccoun
   const [githubHandle, setGithubHandle] = useState('')
   const [repoScope, setRepoScope] = useState('')
   const [error, setError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [removingId, setRemovingId] = useState(null)
 
   const activity = useMemo(
     () => buildAgentActivity(agentAccounts, scans).slice(0, 8),
     [agentAccounts, scans]
   )
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
+    if (submitting) return
     const normalizedHandle = normalizeHandle(githubHandle)
 
     if (!normalizedHandle) {
@@ -65,20 +68,37 @@ export default function AgentsPage({ agentAccounts, onAddAccount, onRemoveAccoun
       return
     }
 
-    const meta = providerMeta(provider)
-    onAddAccount?.({
-      id: `${provider}-${Date.now()}`,
-      provider,
-      displayName: displayName.trim() || `${meta.label} account`,
-      githubHandle: normalizedHandle,
-      repoScope: repoScope.trim(),
-      createdAt: new Date().toISOString(),
-    })
+    try {
+      setSubmitting(true)
+      const meta = providerMeta(provider)
+      await onAddAccount?.({
+        provider,
+        displayName: displayName.trim() || `${meta.label} account`,
+        githubHandle: normalizedHandle,
+        repoScope: repoScope.trim(),
+      })
+      setDisplayName('')
+      setGithubHandle('')
+      setRepoScope('')
+      setError(null)
+    } catch (err) {
+      setError(err?.message || 'Could not save the account right now.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
-    setDisplayName('')
-    setGithubHandle('')
-    setRepoScope('')
-    setError(null)
+  const removeAccount = async (accountId) => {
+    if (!accountId || removingId) return
+    try {
+      setRemovingId(accountId)
+      await onRemoveAccount?.(accountId)
+      setError(null)
+    } catch (err) {
+      setError(err?.message || 'Could not remove the account right now.')
+    } finally {
+      setRemovingId(null)
+    }
   }
 
   return (
@@ -171,9 +191,10 @@ export default function AgentsPage({ agentAccounts, onAddAccount, onRemoveAccoun
 
             <button
               type="submit"
+              disabled={submitting}
               className="inline-flex w-full items-center justify-center gap-2 border border-ibm-blue-60 bg-ibm-blue-60 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-ibm-blue-70"
             >
-              Add agent account
+              {submitting ? 'Saving account...' : 'Add agent account'}
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
@@ -203,7 +224,8 @@ export default function AgentsPage({ agentAccounts, onAddAccount, onRemoveAccoun
                         </div>
                       </div>
                       <button
-                        onClick={() => onRemoveAccount?.(account.id)}
+                        onClick={() => removeAccount(account.id)}
+                        disabled={removingId === account.id}
                         className="inline-flex h-8 w-8 items-center justify-center border border-carbon-border text-carbon-text-secondary transition-colors hover:border-ibm-red-60 hover:text-ibm-red-60 dark:border-ibm-gray-80 dark:text-ibm-gray-40"
                         aria-label={`Remove ${account.displayName}`}
                       >

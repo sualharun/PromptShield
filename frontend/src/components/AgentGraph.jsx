@@ -123,6 +123,7 @@ export default function AgentGraph({ scanId }) {
   const [riskFilter, setRiskFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [showLabels, setShowLabels] = useState(true)
+  const [viewMode, setViewMode] = useState('clean')
   const [selectedNodeId, setSelectedNodeId] = useState('')
   const [hoveredNodeId, setHoveredNodeId] = useState('')
   const [selectedChainIdx, setSelectedChainIdx] = useState(0)
@@ -228,18 +229,32 @@ export default function AgentGraph({ scanId }) {
     return chains[Math.min(selectedChainIdx, chains.length - 1)]
   }, [data, selectedChainIdx])
 
-  const selectedChainNodeNames = useMemo(() => {
-    if (!selectedChain?.path?.length) return []
-    return selectedChain.path
-  }, [selectedChain])
+  const selectedChainNodeIds = useMemo(() => {
+    if (!selectedChain) return []
+    if (Array.isArray(selectedChain.node_ids) && selectedChain.node_ids.length) {
+      return selectedChain.node_ids
+    }
+    if (!Array.isArray(selectedChain.path) || selectedChain.path.length === 0) return []
+    const byName = new Map((data?.nodes || []).map((n) => [n.name, n.id]))
+    return selectedChain.path.map((name) => byName.get(name)).filter(Boolean)
+  }, [selectedChain, data])
 
-  const activeChainNodeNames = useMemo(() => {
-    if (!selectedChainNodeNames.length) return []
-    if (!playChain) return []
-    return selectedChainNodeNames.slice(0, Math.max(2, playStep + 1))
-  }, [playChain, playStep, selectedChainNodeNames])
+  const chainFrameCount = useMemo(
+    () => Math.max(3, selectedChainNodeIds.length),
+    [selectedChainNodeIds.length]
+  )
 
-  const chainNameSet = useMemo(() => new Set(selectedChainNodeNames), [selectedChainNodeNames])
+  const activeChainNodeIds = useMemo(() => {
+    if (!selectedChainNodeIds.length || !playChain) return []
+    const progress = Math.min(1, (playStep + 1) / chainFrameCount)
+    const visibleCount = Math.max(
+      2,
+      Math.min(selectedChainNodeIds.length, Math.ceil(progress * selectedChainNodeIds.length))
+    )
+    return selectedChainNodeIds.slice(0, visibleCount)
+  }, [playChain, playStep, chainFrameCount, selectedChainNodeIds])
+
+  const chainNodeSet = useMemo(() => new Set(selectedChainNodeIds), [selectedChainNodeIds])
 
   /* ── Neighbor highlight ─────────────────────────────────────────────── */
   const idOf = (value) => (value && typeof value === 'object') ? value.id : value
@@ -255,23 +270,34 @@ export default function AgentGraph({ scanId }) {
     }
     return set
   }, [graphData.links, selectedNodeId])
+  const cleanMode = viewMode === 'clean'
 
   /* ── Attack path animation ──────────────────────────────────────────── */
   useEffect(() => {
-    if (!playChain || !selectedChainNodeNames.length) return
-    setPlayStep(1)
+    if (!playChain || !selectedChainNodeIds.length) return
+    setPlayStep(0)
     const id = setInterval(() => {
       setPlayStep((curr) => {
         const next = curr + 1
-        if (next >= selectedChainNodeNames.length) {
+        if (next >= chainFrameCount) {
           setPlayChain(false)
-          return selectedChainNodeNames.length - 1
+          return chainFrameCount - 1
         }
         return next
       })
-    }, 850)
+    }, 700)
     return () => clearInterval(id)
-  }, [playChain, selectedChainNodeNames])
+  }, [playChain, selectedChainNodeIds, chainFrameCount])
+
+  useEffect(() => {
+    if (!graphRef.current || !playChain || !activeChainNodeIds.length) return
+    const currentId = activeChainNodeIds[activeChainNodeIds.length - 1]
+    const node = graphData.nodes.find((n) => n.id === currentId)
+    if (!node || node.x === undefined || node.y === undefined) return
+    graphRef.current.centerAt(node.x, node.y, 700)
+    const currentZoom = graphRef.current.zoom()
+    graphRef.current.zoom(Math.max(1.8, currentZoom), 650)
+  }, [playChain, activeChainNodeIds, graphData.nodes])
 
   /* ── Force config ───────────────────────────────────────────────────── */
   useEffect(() => {
@@ -284,21 +310,23 @@ export default function AgentGraph({ scanId }) {
 
   useEffect(() => {
     if (!graphRef.current) return
+    const charge = cleanMode ? -620 : -500
+    const linkDistance = cleanMode ? 180 : 160
     const chargeForce = graphRef.current.d3Force('charge')
     if (chargeForce && typeof chargeForce.strength === 'function') {
-      chargeForce.strength(-500)
+      chargeForce.strength(charge)
     }
     const linkForce = graphRef.current.d3Force('link')
     if (linkForce && typeof linkForce.distance === 'function') {
-      linkForce.distance(() => 160)
+      linkForce.distance(() => linkDistance)
       if (typeof linkForce.strength === 'function') {
-        linkForce.strength(0.4)
+        linkForce.strength(cleanMode ? 0.45 : 0.35)
       }
     }
     if (typeof graphRef.current.d3ReheatSimulation === 'function') {
       graphRef.current.d3ReheatSimulation()
     }
-  }, [graphData])
+  }, [graphData, cleanMode])
 
   /* ── Resize observer ────────────────────────────────────────────────── */
   useEffect(() => {
@@ -316,21 +344,17 @@ export default function AgentGraph({ scanId }) {
   }, [])
 
   /* ── Edge helpers ───────────────────────────────────────────────────── */
-  const isPathEdge = (edge, pathNodes) => {
-    if (!pathNodes.length) return false
-    const sourceName = typeof edge.source === 'object'
-      ? edge.source.name
-      : data?.nodes?.find((n) => n.id === edge.source)?.name
-    const targetName = typeof edge.target === 'object'
-      ? edge.target.name
-      : data?.nodes?.find((n) => n.id === edge.target)?.name
-    const ai = pathNodes.indexOf(sourceName || '')
-    const bi = pathNodes.indexOf(targetName || '')
+  const isPathEdge = (edge, pathNodeIds) => {
+    if (!pathNodeIds.length) return false
+    const src = idOf(edge.source)
+    const dst = idOf(edge.target)
+    const ai = pathNodeIds.indexOf(src)
+    const bi = pathNodeIds.indexOf(dst)
     return ai >= 0 && bi >= 0 && Math.abs(ai - bi) === 1
   }
 
-  const isChainEdge = (edge) => isPathEdge(edge, selectedChainNodeNames)
-  const isActivePlayEdge = (edge) => isPathEdge(edge, activeChainNodeNames)
+  const isChainEdge = (edge) => isPathEdge(edge, selectedChainNodeIds)
+  const isActivePlayEdge = (edge) => isPathEdge(edge, activeChainNodeIds)
 
   const linkColor = (edge) => {
     const src = idOf(edge.source)
@@ -345,10 +369,11 @@ export default function AgentGraph({ scanId }) {
   }
 
   const linkParticles = (edge) => {
+    if (cleanMode && !isActivePlayEdge(edge) && !isChainEdge(edge)) return 0
     if (isActivePlayEdge(edge)) return 10
-    if (isChainEdge(edge)) return 3
-    if (edge.risk === 'critical') return 2
-    return 0
+    if (isChainEdge(edge)) return cleanMode ? 2 : 4
+    if (edge.risk === 'critical') return cleanMode ? 1 : 2
+    return cleanMode ? 0 : 1
   }
 
   /* ── Node rendering ─────────────────────────────────────────────────── */
@@ -364,8 +389,8 @@ export default function AgentGraph({ scanId }) {
     const active = selectedNodeId === node.id || hoveredNodeId === node.id
     const dimmed = selectedNodeId && !selectedNeighborIds.has(node.id)
     if (dimmed) return 'rgba(140, 140, 140, 0.2)'
-    if (active) return '#ffffff'
-    if (chainNameSet.has(node.name)) return '#be95ff'
+    if (active) return '#16213e'
+    if (chainNodeSet.has(node.id)) return '#be95ff'
     return base
   }
 
@@ -374,7 +399,7 @@ export default function AgentGraph({ scanId }) {
     const x = node.x || 0
     const y = node.y || 0
     const active = selectedNodeId === node.id || hoveredNodeId === node.id
-    const inChain = chainNameSet.has(node.name)
+    const inChain = chainNodeSet.has(node.id)
     const shape = typeShape(node.type)
     const color = nodeColor(node)
 
@@ -430,7 +455,7 @@ export default function AgentGraph({ scanId }) {
     const y2 = y + r + 23 / globalScale
 
     ctx.font = `600 ${fontSize}px "IBM Plex Sans", ui-sans-serif, -apple-system, sans-serif`
-    ctx.fillStyle = active ? '#ffffff' : '#d0d0d0'
+    ctx.fillStyle = active ? '#16213e' : '#d0d0d0'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'alphabetic'
     ctx.fillText(label, x, y1)
@@ -448,6 +473,22 @@ export default function AgentGraph({ scanId }) {
       ctx.fillStyle = node.risk_score >= 70 ? '#ff8fa3' : node.risk_score >= 45 ? '#ffb784' : '#6fdc8c'
       ctx.fillText(riskLabel, x, y3)
     }
+  }
+
+  const resetGraphView = (full = false) => {
+    setSelectedNodeId('')
+    setHoveredNodeId('')
+    setPlayChain(false)
+    setPlayStep(0)
+    if (full) {
+      setRiskFilter('all')
+      setTypeFilter('all')
+    }
+    setTimeout(() => {
+      if (graphRef.current) {
+        graphRef.current.zoomToFit(600, 120)
+      }
+    }, 40)
   }
 
   /* ── Loading / error states ─────────────────────────────────────────── */
@@ -548,7 +589,11 @@ export default function AgentGraph({ scanId }) {
       </div>
 
       {/* ── Filters ───────────────────────────────────────────────────── */}
-      <div className="grid gap-2 border border-carbon-border bg-carbon-layer p-3 md:grid-cols-5 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
+      <div className="border border-carbon-border bg-carbon-layer p-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+          Graph controls
+        </div>
+        <div className="grid gap-2 md:grid-cols-6">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
           Risk filter
           <select
@@ -585,14 +630,29 @@ export default function AgentGraph({ scanId }) {
           </button>
         </div>
         <div className="flex items-end">
+          <div className="w-full border border-carbon-border dark:border-ibm-gray-80">
+            <div className="grid grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setViewMode('clean')}
+                className={`px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] ${viewMode === 'clean' ? 'bg-carbon-text text-white dark:bg-ibm-blue-60' : 'bg-white text-carbon-text hover:bg-carbon-layer dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80'}`}
+              >
+                Clean
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('detailed')}
+                className={`px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] ${viewMode === 'detailed' ? 'bg-carbon-text text-white dark:bg-ibm-blue-60' : 'bg-white text-carbon-text hover:bg-carbon-layer dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80'}`}
+              >
+                Detailed
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-end">
           <button
             type="button"
-            onClick={() => {
-              setRiskFilter('all')
-              setTypeFilter('all')
-              setSelectedNodeId('')
-              setHoveredNodeId('')
-            }}
+            onClick={() => resetGraphView(true)}
             className="w-full border border-carbon-border bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-carbon-text hover:bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80"
           >
             Reset view
@@ -602,15 +662,16 @@ export default function AgentGraph({ scanId }) {
           <button
             type="button"
             onClick={() => {
-              if (!selectedChainNodeNames.length) return
+              if (!selectedChainNodeIds.length) return
               setPlayChain(true)
               setPlayStep(0)
             }}
-            disabled={chains.length === 0}
-            className="w-full border border-carbon-border bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-carbon-text hover:bg-carbon-layer disabled:opacity-40 dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80"
+            disabled={!selectedChainNodeIds.length}
+            className="w-full border border-[#de715d] bg-[#de715d] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-white hover:bg-[#c96351] disabled:opacity-40"
           >
             Play attack path
           </button>
+        </div>
         </div>
       </div>
 
@@ -628,31 +689,43 @@ export default function AgentGraph({ scanId }) {
       </div>
 
       {/* ── Graph canvas ──────────────────────────────────────────────── */}
-      <div ref={graphShellRef} className="w-full">
-        <ForceGraph2D
-          ref={graphRef}
-          graphData={graphData}
-          width={graphSize.width}
-          height={graphSize.height}
-          backgroundColor="transparent"
-          nodeCanvasObject={nodePaint}
-          nodeVal={nodeVal}
-          linkColor={linkColor}
-          linkWidth={(edge) => (isActivePlayEdge(edge) ? 3 : isChainEdge(edge) ? 2 : 1)}
-          linkDirectionalParticles={linkParticles}
-          linkDirectionalParticleWidth={3}
-          linkDirectionalParticleSpeed={0.006}
-          linkDirectionalArrowLength={6}
-          linkDirectionalArrowRelPos={0.85}
-          linkDirectionalArrowColor={linkColor}
-          onNodeClick={(node) => setSelectedNodeId(node.id === selectedNodeId ? '' : node.id)}
-          onNodeHover={(node) => setHoveredNodeId(node?.id || '')}
-          onBackgroundClick={() => setSelectedNodeId('')}
-          warmupTicks={80}
-          cooldownTicks={100}
-          enableZoomInteraction={true}
-          enablePanInteraction={true}
-        />
+      <div
+        ref={graphShellRef}
+        className="relative h-[340px] w-full overflow-hidden border border-carbon-border dark:border-ibm-gray-80 md:h-[420px]"
+        onMouseLeave={() => setHoveredNodeId('')}
+      >
+        <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_18%_18%,rgba(120,169,255,0.17),transparent_38%),radial-gradient(circle_at_82%_28%,rgba(190,149,255,0.16),transparent_42%),linear-gradient(180deg,#171c24_0%,#0f131a_100%)]" />
+        <div className="pointer-events-none absolute inset-0 z-0 opacity-20 [background-image:linear-gradient(rgba(141,141,141,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(141,141,141,0.15)_1px,transparent_1px)] [background-size:30px_30px]" />
+        <div className="absolute inset-0 z-10">
+          <ForceGraph2D
+            ref={graphRef}
+            graphData={graphData}
+            width={graphSize.width}
+            height={graphSize.height}
+            backgroundColor="transparent"
+            nodeCanvasObject={nodePaint}
+            nodeVal={nodeVal}
+            linkColor={linkColor}
+            linkWidth={(edge) => (isActivePlayEdge(edge) ? 3.4 : isChainEdge(edge) ? 2.2 : cleanMode ? 0.9 : 1.2)}
+            linkDirectionalParticles={linkParticles}
+            linkDirectionalParticleWidth={(edge) => (isActivePlayEdge(edge) ? 3.8 : isChainEdge(edge) ? 2.6 : 2.0)}
+            linkDirectionalParticleSpeed={(edge) => {
+              if (isActivePlayEdge(edge)) return 0.032
+              if (isChainEdge(edge)) return 0.02
+              return cleanMode ? 0.006 : 0.011
+            }}
+            linkDirectionalArrowLength={6}
+            linkDirectionalArrowRelPos={0.85}
+            linkDirectionalArrowColor={linkColor}
+            onNodeClick={(node) => setSelectedNodeId(node.id === selectedNodeId ? '' : node.id)}
+            onNodeHover={(node) => setHoveredNodeId(node?.id || '')}
+            onBackgroundClick={() => setSelectedNodeId('')}
+            warmupTicks={80}
+            cooldownTicks={cleanMode ? 140 : 220}
+            enableZoomInteraction
+            enablePanInteraction
+          />
+        </div>
       </div>
 
       {/* ── Attack chains ─────────────────────────────────────────────── */}

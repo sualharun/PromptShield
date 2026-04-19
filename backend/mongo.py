@@ -70,6 +70,8 @@ class C:
     AGENT_ALERTS = "agent_alerts"
     # Time-series snapshot of agent attack surface size per scan.
     AGENT_SURFACE_TIMELINE = "agent_surface_timeline"
+    # Connected coding-agent identities for attribution in dashboard/agents UI.
+    AGENT_ACCOUNTS = "agent_accounts"
 
 
 # ── Lazy singletons ─────────────────────────────────────────────────────────
@@ -444,6 +446,7 @@ def init_collections() -> None:
         C.PROMPT_VECTORS,
         C.AGENT_EXPLOIT_CORPUS,
         C.AGENT_ALERTS,
+        C.AGENT_ACCOUNTS,
     ]:
         _create_or_relax(db, name, None)
 
@@ -491,6 +494,11 @@ def init_collections() -> None:
     db[C.AGENT_ALERTS].create_index([("created_at", DESCENDING)])
     db[C.AGENT_ALERTS].create_index([("repo_full_name", ASCENDING), ("created_at", DESCENDING)])
     db[C.AGENT_ALERTS].create_index([("acknowledged", ASCENDING)])
+    db[C.AGENT_ACCOUNTS].create_index(
+        [("provider", ASCENDING), ("github_handle", ASCENDING), ("repo_scope", ASCENDING)],
+        unique=True,
+    )
+    db[C.AGENT_ACCOUNTS].create_index([("created_at", DESCENDING)])
 
     # Time-series collections don't need a separate ts index (Atlas builds one),
     # but mongomock fallback collections benefit from one.

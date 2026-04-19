@@ -188,6 +188,72 @@ def _detect_tools_from_code(code: str) -> List[Dict]:
     return tools
 
 
+def _chain_edge_ids(node_ids: List[str]) -> List[str]:
+    return [f"{node_ids[i]}->{node_ids[i + 1]}" for i in range(len(node_ids) - 1)]
+
+
+def _fallback_chain_from_graph(
+    *,
+    nodes: List[Dict],
+    edges: List[Dict],
+    start_ids: List[str],
+) -> Dict[str, Any] | None:
+    """Best-effort fallback chain so Play Attack Path always has something to animate."""
+    if not nodes or not edges:
+        return None
+    node_by_id = {n.get("id"): n for n in nodes if n.get("id")}
+    adj: Dict[str, List[str]] = {}
+    for e in edges:
+        src = e.get("source")
+        dst = e.get("target")
+        if not src or not dst:
+            continue
+        adj.setdefault(src, []).append(dst)
+
+    best_path: List[str] | None = None
+    best_score = -1.0
+    best_terminal_type = "node"
+
+    for start in start_ids:
+        if start not in node_by_id:
+            continue
+        q: List[Tuple[str, List[str]]] = [(start, [start])]
+        seen = {start}
+        while q:
+            curr, path = q.pop(0)
+            if len(path) > 6:
+                continue
+            n = node_by_id.get(curr) or {}
+            ntype = n.get("type")
+            nscore = float(n.get("risk_score", 0))
+            priority = 20 if ntype == "resource" else 10 if ntype == "dangerous_sink" else 0
+            weighted = nscore + priority
+            if len(path) >= 2 and weighted > best_score:
+                best_score = weighted
+                best_path = path
+                best_terminal_type = ntype or "node"
+            for nxt in adj.get(curr, []):
+                key = f"{curr}->{nxt}:{len(path)}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                q.append((nxt, path + [nxt]))
+
+    if not best_path or len(best_path) < 2:
+        return None
+
+    return {
+        "path": [node_by_id.get(nid, {}).get("name", nid) for nid in best_path],
+        "node_ids": best_path,
+        "edge_ids": _chain_edge_ids(best_path),
+        "risk_score": round(float(node_by_id.get(best_path[-1], {}).get("risk_score", 0)), 1),
+        "terminal_type": best_terminal_type,
+        "finding_type": "AUTO_FALLBACK",
+        "description": "Auto-generated highest-risk reachable path",
+        "fallback": True,
+    }
+
+
 def build_agent_graph(
     findings: List[Dict],
     code: str = "",
@@ -456,6 +522,8 @@ def build_agent_graph(
     else:
         threat_level = "LOW"
 
+    node_name_by_id = {n["id"]: n.get("name", n["id"]) for n in nodes}
+
     # ── 8. Build attack chains ─────────────────────────────────────────
     # Each chain: source → tool/agent → sink → resource
     for f in findings:
@@ -463,36 +531,45 @@ def build_agent_graph(
         if ftype not in (TOOL_FINDING_TYPES | OUTPUT_FINDING_TYPES):
             continue
 
-        chain_path = []
+        chain_node_ids: List[str] = []
         chain_risk = SEVERITY_SCORE.get(f.get("severity", "low"), 20)
         sink_name = _extract_sink_name(f)
         resource = SINK_TO_RESOURCE.get(ftype)
         tool_name = _extract_tool_name(f)
+        sink_id = sink_nodes.get(sink_name)
+        resource_id = resource_ids.get(resource) if resource else None
+        tool_id = tool_nodes.get(tool_name) if tool_name else None
 
         # Build the path
         if ftype in TOOL_FINDING_TYPES:
-            if "user_input" in source_nodes:
-                chain_path.append("User Input")
-            if tool_name:
-                chain_path.append(tool_name)
-            chain_path.append(sink_name)
-            if resource:
-                chain_path.append(RESOURCE_LABELS.get(resource, resource))
+            if source_nodes.get("user_input"):
+                chain_node_ids.append(source_nodes["user_input"])
+            if tool_id:
+                chain_node_ids.append(tool_id)
+            if sink_id:
+                chain_node_ids.append(sink_id)
+            if resource_id:
+                chain_node_ids.append(resource_id)
             terminal = "resource"
         else:
-            chain_path.append("LLM Response")
-            chain_path.append(sink_name)
-            if resource:
-                chain_path.append(RESOURCE_LABELS.get(resource, resource))
+            if source_nodes.get("llm_response"):
+                chain_node_ids.append(source_nodes["llm_response"])
+            if sink_id:
+                chain_node_ids.append(sink_id)
+            if resource_id:
+                chain_node_ids.append(resource_id)
             terminal = "resource"
 
-        if len(chain_path) >= 2:
+        if len(chain_node_ids) >= 2:
             attack_chains.append({
-                "path": chain_path,
+                "path": [node_name_by_id.get(nid, nid) for nid in chain_node_ids],
+                "node_ids": chain_node_ids,
+                "edge_ids": _chain_edge_ids(chain_node_ids),
                 "risk_score": chain_risk,
                 "terminal_type": terminal,
                 "finding_type": ftype,
                 "description": f.get("title", ""),
+                "fallback": False,
             })
 
     # Sort chains by risk (highest first), deduplicate
@@ -500,11 +577,24 @@ def build_agent_graph(
     seen_paths: Set[str] = set()
     unique_chains = []
     for chain in attack_chains:
-        key = " → ".join(chain["path"])
+        key = "->".join(chain.get("node_ids") or chain.get("path") or [])
         if key not in seen_paths:
             seen_paths.add(key)
             unique_chains.append(chain)
     attack_chains = unique_chains[:5]
+    if not attack_chains:
+        fallback_chain = _fallback_chain_from_graph(
+            nodes=nodes,
+            edges=edges,
+            start_ids=[
+                source_nodes.get("user_input"),
+                source_nodes.get("llm_response"),
+                source_nodes.get("rag_retrieval"),
+                agent_id,
+            ],
+        )
+        if fallback_chain:
+            attack_chains = [fallback_chain]
 
     # ── 9. Compute insights ────────────────────────────────────────────
     tool_count = sum(1 for n in nodes if n["type"] == "tool")

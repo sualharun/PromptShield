@@ -49,6 +49,7 @@ from pm_router import router as pm_router
 from policy_router import router as policy_router
 from suppression_router import router as suppression_router
 from cross_repo_router import router as cross_repo_router
+from agent_accounts_router import router as agent_accounts_router
 from suppression import annotate as annotate_suppressions, suppressed_signatures
 from github_webhook import router as github_router
 from graph_router import router as graph_router
@@ -1696,6 +1697,7 @@ app.include_router(pm_router)
 app.include_router(policy_router)
 app.include_router(suppression_router)
 app.include_router(cross_repo_router)
+app.include_router(agent_accounts_router)
 app.include_router(org_router)
 app.include_router(ops_router)
 app.include_router(drift_router)

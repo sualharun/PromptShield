@@ -528,7 +528,7 @@ export default function DashboardPage({ onSelectScan }) {
                   <TrendDelta daily={data.daily_velocity} />
                 </div>
               </div>
-              <div className="grid gap-px bg-carbon-border dark:bg-ibm-gray-80 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+              <div className="grid gap-px bg-carbon-border dark:bg-ibm-gray-80 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
                 <Tile
                   label="Total PR scans"
                   value={data.total_pr_scans ?? 0}

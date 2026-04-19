@@ -209,3 +209,43 @@ def test_unhandled_action_is_ignored(monkeypatch):
     )
     assert r.status_code == 200
     assert r.json().get("ignored_action") == "labeled"
+
+
+def test_anchor_missing_line_numbers_uses_added_lines():
+    findings = [
+        {
+            "type": "INSECURE_FILE_UPLOAD",
+            "title": "Insecure file upload handler without validation controls",
+            "description": "write bytes from upload directly to disk",
+            "evidence": "dest.write_bytes(raw)",
+            "line_number": None,
+        }
+    ]
+    content = (
+        "async def insecure_upload(file):\n"
+        "    raw = await file.read()\n"
+        "    dest.write_bytes(raw)\n"
+    )
+    added = {3}
+    github_webhook._anchor_missing_line_numbers(findings, content, added)
+    assert findings[0]["line_number"] == 3
+
+
+def test_top_attack_paths_markdown_contains_expected_fields():
+    md = github_webhook._top_attack_paths_markdown(
+        [
+            {
+                "type": "INSECURE_FILE_UPLOAD",
+                "severity": "critical",
+                "confidence": 0.9,
+                "path": "backend/taskboard/vuln_arbitrary_upload.py",
+                "line_number": 22,
+                "remediation": "Add MIME, extension, size, and safe-path checks.",
+                "owner_team": "@security-platform",
+            }
+        ]
+    )
+    assert "Top Attack Paths" in md
+    assert "backend/taskboard/vuln_arbitrary_upload.py:22" in md
+    assert "owner/team: `@security-platform`" in md
+    assert "Expected risk reduction: **-40**" in md

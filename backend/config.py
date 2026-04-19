@@ -78,6 +78,10 @@ class Settings:
         os.environ.get("GITHUB_APP_PRIVATE_KEY_PATH"),
     )
     GITHUB_WEBHOOK_SECRET: str | None = os.environ.get("GITHUB_WEBHOOK_SECRET")
+    # Fast gate for PR checks: static + dataflow + deterministic rules, no Gemini.
+    GITHUB_WEBHOOK_FAST_SCAN: bool = _bool("GITHUB_WEBHOOK_FAST_SCAN", True)
+    # Optional async semantic enrichment after fast gate completes.
+    GITHUB_WEBHOOK_AI_ENRICHMENT: bool = _bool("GITHUB_WEBHOOK_AI_ENRICHMENT", False)
     RISK_GATE_THRESHOLD: int = int(os.environ.get("RISK_GATE_THRESHOLD", "70"))
     DASHBOARD_BASE_URL: str = os.environ.get(
         "DASHBOARD_BASE_URL", "http://localhost:5173"

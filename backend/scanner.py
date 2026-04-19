@@ -282,6 +282,116 @@ def _evidence(text: str, start: int, end: int, ctx: int = 24) -> str:
     return snippet.strip()
 
 
+def _detect_insecure_uploads(text: str, scan_language: str) -> List[Dict]:
+    """Fast-path heuristic for unsafe multipart upload handlers.
+
+    We intentionally keep this lightweight (regex only) so it stays cheap enough
+    for webhook PR gating. This covers the common high-impact pattern:
+      UploadFile + full read + write to disk, but no MIME/ext/size/path controls.
+    """
+    findings: List[Dict] = []
+    if scan_language != "python":
+        return findings
+
+    if not re.search(r"\bUploadFile\b", text):
+        return findings
+
+    read_m = re.search(r"await\s+[A-Za-z_]\w*\.read\(\)", text)
+    write_m = re.search(
+        r"(?:[A-Za-z_]\w*\.write_bytes\()|(?:open\([^,\n]+,\s*[\"']wb[\"'])",
+        text,
+    )
+    if not (read_m and write_m):
+        return findings
+
+    has_mime_guard = bool(
+        re.search(r"\b(?:content_type|mime|media_type)\b", text, re.IGNORECASE)
+        and re.search(
+            r"\b(?:allowed|allowlist|whitelist|in\s*\(|startswith\(|endswith\(|match\()",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    has_ext_guard = bool(
+        re.search(
+            r"\b(?:splitext|suffix|endswith\(|allowed_ext|allowed_extensions|extension)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    has_size_guard = bool(
+        re.search(
+            r"\b(?:max_size|max_upload|max_upload_size|upload_size|upload_limit|content_length|file\.size)\b",
+            text,
+            re.IGNORECASE,
+        )
+        or re.search(r"len\(\s*[A-Za-z_]\w*\s*\)\s*(?:<=|<|>=|>)\s*\d+", text)
+    )
+    has_path_guard = bool(
+        re.search(
+            r"\b(?:resolve\(\)|abspath\(|normpath\(|commonpath\(|is_relative_to\(|startswith\()",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    unsafe_filename_path = bool(
+        re.search(
+            r"(?:file\.filename|filename)\b.*(?:Path\(|join\(|/|\+)",
+            text,
+            re.IGNORECASE,
+        )
+    )
+
+    missing = [
+        name
+        for name, ok in (
+            ("MIME type allowlist", has_mime_guard),
+            ("file extension allowlist", has_ext_guard),
+            ("upload size cap", has_size_guard),
+            ("safe-path boundary check", has_path_guard),
+        )
+        if not ok
+    ]
+    if not missing:
+        return findings
+
+    severity = (
+        "critical"
+        if len(missing) >= 3 or (unsafe_filename_path and (not has_ext_guard or not has_path_guard))
+        else "high"
+    )
+    title = "Insecure file upload handler without validation controls"
+    description = (
+        "Upload handler reads full file bytes and writes to disk without enough safety guards, "
+        "which can enable unrestricted upload, path traversal, or resource exhaustion."
+    )
+    remediation = (
+        "Enforce MIME and extension allowlists, strict max-size checks, and canonical path-boundary "
+        "validation before persisting uploaded files."
+    )
+    missing_summary = ", ".join(missing)
+    line = _line_of(text, (read_m.start() if read_m else write_m.start()))
+    evidence = _evidence(text, write_m.start(), write_m.end()) if write_m else ""
+
+    findings.append(
+        {
+            "type": "INSECURE_FILE_UPLOAD",
+            "severity": severity,
+            "title": title,
+            "description": f"{description} Missing: {missing_summary}.",
+            "line_number": line,
+            "remediation": remediation,
+            "source": "static",
+            "confidence": 0.88,
+            "evidence": evidence,
+            "cwe": "CWE-434",
+            "owasp": "LLM05: Improper Output Handling",
+            "language": scan_language,
+        }
+    )
+    return findings
+
+
 def static_scan(text: str, language: Optional[str] = None) -> List[Dict]:
     scan_language = language or detect_language_from_text(text)
     findings: List[Dict] = []
@@ -324,6 +434,8 @@ def static_scan(text: str, language: Optional[str] = None) -> List[Dict]:
         except re.error:
             continue
     
+    findings.extend(_detect_insecure_uploads(text, scan_language))
+
     # Add agent security scanning (new feature)
     if scan_agent_security:
         try:

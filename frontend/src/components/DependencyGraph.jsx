@@ -9,16 +9,28 @@ function scoreTone(score) {
   return 'low'
 }
 
-function toneClasses(tone) {
+function toneClasses(tone, mode = 'light') {
+  if (mode === 'dark') {
+    switch (tone) {
+      case 'critical':
+        return 'border-ibm-red-60 bg-[#2d1215] text-[#ffd7d9]'
+      case 'high':
+        return 'border-ibm-orange-40 bg-[#2a1b0f] text-[#ffd9b8]'
+      case 'medium':
+        return 'border-[#8a6f00] bg-[#2a250f] text-[#ffefb1]'
+      default:
+        return 'border-ibm-green-60 bg-[#10231a] text-[#b8f5cb]'
+    }
+  }
   switch (tone) {
     case 'critical':
-      return 'border-ibm-red-60 bg-[#2d1215] text-[#ffd7d9]'
+      return 'border-[#ffd7d9] bg-[#fff1f1] text-[#6f1d1b]'
     case 'high':
-      return 'border-ibm-orange-40 bg-[#2a1b0f] text-[#ffd9b8]'
+      return 'border-[#ffd8b5] bg-[#fff4e8] text-[#7a3714]'
     case 'medium':
-      return 'border-[#8a6f00] bg-[#2a250f] text-[#ffefb1]'
+      return 'border-[#f1df8c] bg-[#fff8d6] text-[#5a4300]'
     default:
-      return 'border-ibm-green-60 bg-[#10231a] text-[#b8f5cb]'
+      return 'border-[#b9e5c8] bg-[#eafaf0] text-[#155d3b]'
   }
 }
 
@@ -189,6 +201,7 @@ export default function DependencyGraph({ scanId }) {
   const [playChain, setPlayChain] = useState(false)
   const [playStep, setPlayStep] = useState(0)
   const [mlRiskMap, setMlRiskMap] = useState({})
+  const [cardTheme, setCardTheme] = useState('light')
 
   useEffect(() => {
     let active = true
@@ -291,32 +304,50 @@ export default function DependencyGraph({ scanId }) {
     return chains[Math.min(selectedChainIdx, chains.length - 1)]
   }, [data, selectedChainIdx])
 
-  const selectedChainNodeNames = useMemo(() => {
-    if (!selectedChain?.path?.length) return []
-    return selectedChain.path
-  }, [selectedChain])
+  const selectedChainNodeIds = useMemo(() => {
+    if (!selectedChain) return []
+    if (Array.isArray(selectedChain.node_ids) && selectedChain.node_ids.length) {
+      return selectedChain.node_ids
+    }
+    // Backward compatibility for old scan docs that only stored human-readable path labels.
+    if (!Array.isArray(selectedChain.path) || selectedChain.path.length === 0) return []
+    const byName = new Map((data?.nodes || []).map((n) => [n.name, n.id]))
+    return selectedChain.path.map((name) => byName.get(name)).filter(Boolean)
+  }, [selectedChain, data])
 
-  const activeChainNodeNames = useMemo(() => {
-    if (!selectedChainNodeNames.length) return []
-    if (!playChain) return []
-    return selectedChainNodeNames.slice(0, Math.max(2, playStep + 1))
-  }, [playChain, playStep, selectedChainNodeNames])
+  const chainFrameCount = useMemo(
+    () => Math.max(3, selectedChainNodeIds.length),
+    [selectedChainNodeIds.length]
+  )
+
+  const activeChainNodeIds = useMemo(() => {
+    if (!selectedChainNodeIds.length || !playChain) return []
+    const progress = Math.min(1, (playStep + 1) / chainFrameCount)
+    const visibleCount = Math.max(
+      2,
+      Math.min(
+        selectedChainNodeIds.length,
+        Math.ceil(progress * selectedChainNodeIds.length)
+      )
+    )
+    return selectedChainNodeIds.slice(0, visibleCount)
+  }, [playChain, playStep, chainFrameCount, selectedChainNodeIds])
 
   useEffect(() => {
-    if (!playChain || !selectedChainNodeNames.length) return
-    setPlayStep(1)
+    if (!playChain || !selectedChainNodeIds.length) return
+    setPlayStep(0)
     const id = setInterval(() => {
       setPlayStep((curr) => {
         const next = curr + 1
-        if (next >= selectedChainNodeNames.length) {
+        if (next >= chainFrameCount) {
           setPlayChain(false)
-          return selectedChainNodeNames.length - 1
+          return chainFrameCount - 1
         }
         return next
       })
-    }, 850)
+    }, 700)
     return () => clearInterval(id)
-  }, [playChain, selectedChainNodeNames])
+  }, [playChain, selectedChainNodeIds, chainFrameCount])
 
   const graphData = useMemo(() => {
     if (!data?.nodes?.length) return { nodes: [], links: [] }
@@ -424,14 +455,14 @@ export default function DependencyGraph({ scanId }) {
   }, [graphData, cleanMode])
 
   useEffect(() => {
-    if (!graphRef.current || !playChain || !activeChainNodeNames.length) return
-    const currentName = activeChainNodeNames[activeChainNodeNames.length - 1]
-    const node = graphData.nodes.find((n) => n.name === currentName)
+    if (!graphRef.current || !playChain || !activeChainNodeIds.length) return
+    const currentId = activeChainNodeIds[activeChainNodeIds.length - 1]
+    const node = graphData.nodes.find((n) => n.id === currentId)
     if (!node || node.x === undefined || node.y === undefined) return
     graphRef.current.centerAt(node.x, node.y, 700)
     const currentZoom = graphRef.current.zoom()
     graphRef.current.zoom(Math.max(1.8, currentZoom), 650)
-  }, [playChain, activeChainNodeNames, graphData.nodes])
+  }, [playChain, activeChainNodeIds, graphData.nodes])
 
   useEffect(() => {
     const el = graphShellRef.current
@@ -449,29 +480,23 @@ export default function DependencyGraph({ scanId }) {
     return () => observer.disconnect()
   }, [])
 
-  const chainNameSet = useMemo(() => new Set(selectedChainNodeNames), [selectedChainNodeNames])
+  const chainNodeSet = useMemo(() => new Set(selectedChainNodeIds), [selectedChainNodeIds])
 
-  const isPathEdge = (edge, pathNodes) => {
-    if (!pathNodes.length) return false
-    const sourceName = typeof edge.source === 'object'
-      ? edge.source.name
-      : data?.nodes?.find((n) => n.id === edge.source)?.name
-    const targetName = typeof edge.target === 'object'
-      ? edge.target.name
-      : data?.nodes?.find((n) => n.id === edge.target)?.name
-    const a = sourceName || ''
-    const b = targetName || ''
-    const ai = pathNodes.indexOf(a)
-    const bi = pathNodes.indexOf(b)
+  const isPathEdge = (edge, pathNodeIds) => {
+    if (!pathNodeIds.length) return false
+    const src = idOf(edge.source)
+    const dst = idOf(edge.target)
+    const ai = pathNodeIds.indexOf(src)
+    const bi = pathNodeIds.indexOf(dst)
     return ai >= 0 && bi >= 0 && Math.abs(ai - bi) === 1
   }
 
   const isChainEdge = (edge) => {
-    return isPathEdge(edge, selectedChainNodeNames)
+    return isPathEdge(edge, selectedChainNodeIds)
   }
 
   const isActivePlayEdge = (edge) => {
-    return isPathEdge(edge, activeChainNodeNames)
+    return isPathEdge(edge, activeChainNodeIds)
   }
 
   const linkColor = (edge) => {
@@ -509,7 +534,7 @@ export default function DependencyGraph({ scanId }) {
   const nodeColor = (node) => {
     const tone = scoreTone(Number(node.risk_score || 0))
     const base = typeColor(node.type || 'dependency')
-    const inChain = chainNameSet.has(node.name)
+    const inChain = chainNodeSet.has(node.id)
     const active = selectedNodeId === node.id || hoveredNodeId === node.id
     const dimmed = selectedNodeId && !selectedNeighborIds.has(node.id)
     if (dimmed) return 'rgba(140, 140, 140, 0.2)'
@@ -521,7 +546,7 @@ export default function DependencyGraph({ scanId }) {
 
   const nodeThreeObject = (node) => {
     const active = selectedNodeId === node.id || hoveredNodeId === node.id
-    const inChain = chainNameSet.has(node.name)
+    const inChain = chainNodeSet.has(node.id)
     const canShowDenseLabel = !cleanMode || prioritizedLabelIds.has(node.id)
     return active || inChain || (showLabels && canShowDenseLabel)
   }
@@ -531,7 +556,7 @@ export default function DependencyGraph({ scanId }) {
     const x = node.x || 0
     const y = node.y || 0
     const active = selectedNodeId === node.id || hoveredNodeId === node.id
-    const inChain = chainNameSet.has(node.name)
+    const inChain = chainNodeSet.has(node.id)
 
     // halo for focused path nodes
     if (inChain) {
@@ -577,6 +602,22 @@ export default function DependencyGraph({ scanId }) {
     }
   }
 
+  const resetGraphView = (full = false) => {
+    setSelectedNodeId('')
+    setHoveredNodeId('')
+    setPlayChain(false)
+    setPlayStep(0)
+    if (full) {
+      setRiskFilter('all')
+      setTypeFilter('all')
+    }
+    setTimeout(() => {
+      if (graphRef.current) {
+        graphRef.current.zoomToFit(600, cleanMode ? 140 : 120)
+      }
+    }, 40)
+  }
+
    
 
   if (loading) {
@@ -608,7 +649,7 @@ export default function DependencyGraph({ scanId }) {
 
   return (
     <div className="mt-3 space-y-4">
-      <div className={`border px-4 py-3 ${toneClasses(scoreBand)}`}>
+      <div className={`border px-4 py-3 ${toneClasses(scoreBand, cardTheme)}`}>
         <div className="text-[11px] uppercase tracking-[0.08em] opacity-80">Dependency risk score</div>
         <div className="mt-1 text-2xl font-light">{score}/100 · {data.threat_level || 'LOW'}</div>
         {data.narrative && <p className="mt-2 text-sm leading-relaxed">{data.narrative}</p>}
@@ -648,7 +689,11 @@ export default function DependencyGraph({ scanId }) {
         </div>
       </div>
 
-      <div className="grid gap-2 border border-carbon-border bg-carbon-layer p-3 md:grid-cols-6 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
+      <div className="border border-carbon-border bg-carbon-layer p-3 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+          Graph controls
+        </div>
+        <div className="grid gap-2 md:grid-cols-6">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
           Risk filter
           <select
@@ -707,12 +752,7 @@ export default function DependencyGraph({ scanId }) {
         <div className="flex items-end">
           <button
             type="button"
-            onClick={() => {
-              setRiskFilter('all')
-              setTypeFilter('all')
-              setSelectedNodeId('')
-              setHoveredNodeId('')
-            }}
+            onClick={() => resetGraphView(true)}
             className="w-full border border-carbon-border bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-carbon-text hover:bg-carbon-layer dark:border-ibm-gray-80 dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80"
           >
             Reset view
@@ -722,15 +762,16 @@ export default function DependencyGraph({ scanId }) {
           <button
             type="button"
             onClick={() => {
-              if (!selectedChainNodeNames.length) return
-              setPlayStep(1)
+              if (!selectedChainNodeIds.length) return
+              setPlayStep(0)
               setPlayChain(true)
             }}
-            disabled={!selectedChainNodeNames.length || playChain}
-            className="w-full border border-ibm-blue-60 bg-ibm-blue-60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-white hover:bg-ibm-blue-70 disabled:cursor-not-allowed disabled:border-ibm-gray-60 disabled:bg-ibm-gray-60"
+            disabled={!selectedChainNodeIds.length || playChain}
+            className="w-full border border-[#de715d] bg-[#de715d] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-white hover:bg-[#c96351] disabled:cursor-not-allowed disabled:border-ibm-gray-60 disabled:bg-ibm-gray-60"
           >
             {playChain ? 'Playing...' : 'Play attack path'}
           </button>
+        </div>
         </div>
       </div>
 
@@ -746,6 +787,14 @@ export default function DependencyGraph({ scanId }) {
           )}
           <div className="px-2 pb-2 text-[11px] text-carbon-text-secondary dark:text-ibm-gray-30">
             Flow legend: <span className="text-[#ffe66d]">yellow = active path</span>, <span className="text-[#2de2ff]">cyan = focused chain</span>
+          </div>
+          <div className="px-2 pb-2 flex flex-wrap gap-3 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+            {TYPE_LANE_ORDER.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5" style={{ backgroundColor: typeColor(t), borderRadius: t === 'pull_request' ? '50%' : '2px' }} />
+                {prettyType(t)}
+              </span>
+            ))}
           </div>
           <div className="px-2 pb-2 text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
             2D map: drag nodes to reposition, wheel to zoom, drag canvas to pan.
@@ -831,7 +880,7 @@ export default function DependencyGraph({ scanId }) {
           </div>
           {selectedNode ? (
             <div className="mt-2 space-y-2">
-              <div className={`border px-2 py-2 ${toneClasses(scoreTone(Number(selectedNode.risk_score || 0)))}`}>
+              <div className={`border px-2 py-2 ${toneClasses(scoreTone(Number(selectedNode.risk_score || 0)), cardTheme)}`}>
                 <p className="font-mono text-xs">{selectedNode.name}</p>
                 <p className="text-[10px] uppercase tracking-[0.08em] opacity-90">{prettyType(selectedNode.type)}</p>
                 <p className="mt-1 text-xs">Risk {Math.round(Number(selectedNode.risk_score || 0))}/100</p>
@@ -910,8 +959,17 @@ export default function DependencyGraph({ scanId }) {
       )}
 
       <div className="border border-carbon-border bg-carbon-layer p-2 dark:border-ibm-gray-80 dark:bg-ibm-gray-100">
-        <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
-          Dependency nodes
+        <div className="flex items-center justify-between gap-3 px-2 py-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-carbon-text-tertiary dark:text-ibm-gray-40">
+            Dependency nodes
+          </div>
+          <button
+            type="button"
+            onClick={() => setCardTheme((mode) => (mode === 'light' ? 'dark' : 'light'))}
+            className="border border-carbon-border bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-carbon-text transition-colors hover:bg-carbon-layer dark:border-ibm-gray-70 dark:bg-ibm-gray-90 dark:text-ibm-gray-10 dark:hover:bg-ibm-gray-80"
+          >
+            {cardTheme === 'light' ? 'Use darker cards' : 'Use lighter cards'}
+          </button>
         </div>
         {depNodes.length === 0 ? (
           <div className="px-3 py-4 text-sm text-carbon-text-secondary dark:text-ibm-gray-30">
@@ -924,7 +982,7 @@ export default function DependencyGraph({ scanId }) {
               return (
                 <div
                   key={node.id}
-                  className={`border px-3 py-2 ${toneClasses(tone)}`}
+                  className={`border px-3 py-2 ${toneClasses(tone, cardTheme)}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-mono text-[12px]">
