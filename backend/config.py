@@ -51,14 +51,12 @@ class Settings:
         ).split(",")
         if o.strip()
     ]
-    ANTHROPIC_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY")
-    AI_MODEL: str = os.environ.get("AI_MODEL", "claude-sonnet-4-20250514")
-
-    # AI provider: "anthropic" or "gemini". Auto-detected if not set.
-    AI_PROVIDER: str = os.environ.get("AI_PROVIDER", "").strip().lower()
+    # Google Vertex AI (Gemini) — uses Application Default Credentials.
+    # GOOGLE_CLOUD_PROJECT being set is the "AI layer enabled" signal.
     GOOGLE_CLOUD_PROJECT: str | None = os.environ.get("GOOGLE_CLOUD_PROJECT")
     GOOGLE_CLOUD_LOCATION: str = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
     GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    AI_PROVIDER: str = "gemini"
     SCAN_RATE_LIMIT: int = int(os.environ.get("SCAN_RATE_LIMIT", "10"))
     SCAN_RATE_WINDOW: int = int(os.environ.get("SCAN_RATE_WINDOW", "60"))
     MAX_INPUT_CHARS: int = int(os.environ.get("MAX_INPUT_CHARS", "50000"))

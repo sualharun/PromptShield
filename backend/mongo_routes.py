@@ -22,6 +22,10 @@ from hybrid_search import hybrid_search
 from mongo import C, col, health as mongo_health, using_mock
 from vector_search import find_similar, seed_corpus, to_finding
 from model_registry import list_models as registry_list, ensure_default_models
+import agent_registry
+import agent_alerts as agent_alerts_mod
+import agent_timeline
+import agent_vector
 
 logger = logging.getLogger("promptshield.mongo_routes")
 
@@ -212,7 +216,166 @@ def agg_top_cwes(days: int = Query(30, ge=1, le=365), limit: int = Query(10, ge=
     return [{"cwe": r["_id"], "count": int(r["count"])} for r in rows]
 
 
-# ── 7) Benchmark / model registry (writes to BENCHMARK_RUNS) ───────────────
+# ── 7a) Agent Tool Registry (v0.5 — agentic-security pivot) ────────────────
+@router.get("/agent-tools")
+def list_agent_tools(
+    repo: Optional[str] = Query(None, description="Filter to one repo_full_name"),
+    risk_level: Optional[str] = Query(
+        None, description="critical | high | medium | low"
+    ),
+    framework: Optional[str] = Query(
+        None, description="langchain | mcp | openai | anthropic | crewai | …"
+    ),
+    capability: Optional[str] = Query(
+        None, description="shell-exec | code-eval | sql-execute | filesystem-write | …"
+    ),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Catalog of AI-exposed tools observed across all scans.
+
+    Each row is one (repo, tool_name) pair, with the worst-case capability
+    set + missing safeguards we've ever seen. Powers the dashboard's "agent
+    attack surface" view.
+    """
+    docs = agent_registry.list_agent_tools(
+        repo_full_name=repo,
+        risk_level=risk_level,
+        framework=framework,
+        capability=capability,
+        limit=limit,
+    )
+    return {
+        "tools": [agent_registry.agent_tool_to_view(d) for d in docs],
+        "count": len(docs),
+    }
+
+
+@router.get("/agent-tools/aggregations/capabilities")
+def agg_agent_capabilities(repo: Optional[str] = None):
+    """Group-by capability — answers 'how much of our attack surface is shell?'"""
+    return {"capabilities": agent_registry.capability_aggregates(repo_full_name=repo)}
+
+
+@router.get("/agent-tools/aggregations/frameworks")
+def agg_agent_frameworks():
+    """Group-by framework — LangChain vs MCP vs OpenAI vs CrewAI exposure."""
+    return {"frameworks": agent_registry.framework_aggregates()}
+
+
+# ── 7b) Tool Risk Knowledge Base (Atlas Vector Search) ─────────────────────
+class SimilarExploitRequest(BaseModel):
+    tool_name: str
+    capabilities: list[str] = []
+    framework: Optional[str] = None
+    evidence: Optional[str] = None
+    k: int = 5
+
+
+@router.post("/agent-tools/similar-exploits")
+def similar_exploits(req: SimilarExploitRequest):
+    """Atlas $vectorSearch over a curated knowledge base of dangerous tool
+    patterns. Given a tool's metadata, return the top-k semantically similar
+    historical exploits (with CVE / blog refs). Falls back to local cosine
+    on mongomock or before the index is provisioned."""
+    matches = agent_vector.find_similar_exploits(
+        tool_name=req.tool_name,
+        capabilities=req.capabilities,
+        framework=req.framework,
+        evidence=req.evidence,
+        k=req.k,
+    )
+    return {
+        "matches": matches,
+        "backend": "atlas_vector_search" if not using_mock() else "local_cosine",
+    }
+
+
+@router.post("/agent-tools/exploit-corpus/seed")
+def seed_exploit_corpus(force: bool = Query(False)):
+    """Embed and upsert the curated exploit corpus. Idempotent unless force=true."""
+    return agent_vector.seed_exploit_corpus(force=force)
+
+
+# ── 7c) Critical-finding alerts (Atlas Trigger + Python fallback) ──────────
+@router.get("/agent-alerts")
+def list_agent_alerts(
+    repo: Optional[str] = None,
+    acknowledged: Optional[bool] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Recent critical agentic findings, written either by the Atlas Trigger
+    (when configured) or by the Python pipeline as a degraded-mode fallback."""
+    docs = agent_alerts_mod.list_alerts(
+        repo_full_name=repo, acknowledged=acknowledged, limit=limit
+    )
+    return {
+        "alerts": [agent_alerts_mod.alert_to_view(d) for d in docs],
+        "count": len(docs),
+        "trigger_status": agent_alerts_mod.trigger_status(),
+    }
+
+
+@router.post("/agent-alerts/{alert_id}/acknowledge")
+def acknowledge_agent_alert(alert_id: str, by: str = Query("anonymous")):
+    ok = agent_alerts_mod.acknowledge(alert_id, by=by)
+    if not ok:
+        raise HTTPException(status_code=404, detail="alert not found")
+    return {"ok": True, "alert_id": alert_id, "acknowledged_by": by}
+
+
+# ── 7d) Agent surface timeline (Atlas time-series) ─────────────────────────
+@router.get("/agent-surface-timeline")
+def agent_surface_timeline(
+    repo: Optional[str] = None,
+    days: int = Query(30, ge=1, le=180),
+):
+    """Time-series of agent attack-surface size per scan. Backed by an Atlas
+    time-series collection in production; a regular collection on mongomock."""
+    return agent_timeline.timeline_window(repo_full_name=repo, days=days)
+
+
+# ── 7e) Hybrid $rankFusion search over the tool registry ───────────────────
+class AgentToolSearchRequest(BaseModel):
+    q: str
+    k: int = 20
+    vector_weight: float = 1.0
+    text_weight: float = 1.0
+
+
+@router.post("/agent-tools/search")
+def search_agent_tools(req: AgentToolSearchRequest):
+    """Reciprocal-Rank-Fusion of $vectorSearch + $search over agent_tools.
+
+    Useful for queries like 'tools that touch the filesystem with no
+    allowlist' — the vector pipeline catches the *meaning*, the text pipeline
+    catches literal `tool_name` matches like `delete_file`.
+    """
+    docs = hybrid_search(
+        req.q,
+        k=req.k,
+        vector_weight=req.vector_weight,
+        text_weight=req.text_weight,
+        collection=C.AGENT_TOOLS,
+        vector_index="agent_tools_vector_idx",
+        text_index="agent_tools_text_idx",
+        text_paths=["tool_name", "evidence_samples", "framework", "capabilities"],
+        embedding_text=req.q,
+    )
+    out = []
+    for d in docs:
+        view = agent_registry.agent_tool_to_view(d)
+        if "fusion_score" in d:
+            try:
+                view["fusion_score"] = float(d["fusion_score"]) if isinstance(
+                    d["fusion_score"], (int, float)
+                ) else d["fusion_score"]
+            except Exception:
+                view["fusion_score"] = d["fusion_score"]
+        out.append(view)
+    return {"results": out, "count": len(out)}
+
+
+# ── 8) Benchmark / model registry (writes to BENCHMARK_RUNS) ───────────────
 class BenchmarkRunPayload(BaseModel):
     accuracy: float
     precision: float

@@ -8,6 +8,7 @@ import ScoreBreakdown from '../components/ScoreBreakdown.jsx'
 import DependencyGraph from '../components/DependencyGraph.jsx'
 import AgentGraph from '../components/AgentGraph.jsx'
 import AttackerSimulationPanel from '../components/AttackerSimulationPanel.jsx'
+import AgentSecurityPanel from '../components/AgentSecurityPanel.jsx'
 import SimilarScansPanel from '../components/SimilarScansPanel.jsx'
 import PanelErrorBoundary from '../components/PanelErrorBoundary.jsx'
 import { CategoryRadar, SeverityBar, TrendLine } from '../components/Charts.jsx'
@@ -40,6 +41,22 @@ export default function ReportPage({ report, history = [], onNewScan }) {
       if (c[s] !== undefined) c[s] += 1
     })
     return c
+  }, [report])
+
+  const agentCount = useMemo(() => {
+    return report.findings.filter((f) => {
+      const t = f.type || ''
+      if (f.source === 'agent_analysis') return true
+      if (t.startsWith('AGENT_')) return true
+      if (t.startsWith('TOOL_')) return true
+      if (t.startsWith('DANGEROUS_TOOL')) return true
+      if (t === 'DANGEROUS_SINK') return true
+      if (t === 'UNVALIDATED_FUNCTION_PARAM_TO_SINK') return true
+      if (t === 'DATAFLOW_INJECTION') return true
+      if (t.startsWith('LLM_OUTPUT_')) return true
+      if (t === 'RAG_UNSANITIZED_CONTEXT') return true
+      return false
+    }).length
   }, [report])
 
   const filtered = useMemo(() => {
@@ -232,6 +249,18 @@ export default function ReportPage({ report, history = [], onNewScan }) {
             Findings
           </button>
           <button
+            className={`border-l border-carbon-border px-3 py-2 transition-colors dark:border-ibm-gray-80 ${activePanel === 'agent-security' ? 'bg-carbon-layer text-carbon-text dark:bg-ibm-gray-100 dark:text-ibm-gray-10' : 'text-carbon-text-tertiary dark:text-ibm-gray-40'}`}
+            onClick={() => setActivePanel('agent-security')}
+            title="AI agent function security (OWASP LLM06 / LLM05)"
+          >
+            Agent security
+            {agentCount > 0 && (
+              <span className="ml-2 inline-flex h-4 min-w-[16px] items-center justify-center bg-[#a2191f] px-1 font-mono text-[10px] font-semibold text-white">
+                {agentCount}
+              </span>
+            )}
+          </button>
+          <button
             className={`border-l border-carbon-border px-3 py-2 transition-colors dark:border-ibm-gray-80 ${activePanel === 'graph' ? 'bg-carbon-layer text-carbon-text dark:bg-ibm-gray-100 dark:text-ibm-gray-10' : 'text-carbon-text-tertiary dark:text-ibm-gray-40'}`}
             onClick={() => setActivePanel('graph')}
           >
@@ -320,6 +349,22 @@ export default function ReportPage({ report, history = [], onNewScan }) {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {activePanel === 'agent-security' && (
+        <section className="mt-6">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-carbon-text-secondary dark:text-ibm-gray-30">
+              AI agent function security
+            </h2>
+            <span className="text-[11px] text-carbon-text-tertiary dark:text-ibm-gray-40">
+              Tools, dataflow + unsafe LLM-output handling · OWASP LLM06 / LLM05
+            </span>
+          </div>
+          <PanelErrorBoundary>
+            <AgentSecurityPanel findings={report.findings} />
+          </PanelErrorBoundary>
         </section>
       )}
 

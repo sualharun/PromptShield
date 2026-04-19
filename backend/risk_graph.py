@@ -441,13 +441,18 @@ def _find_risk_chains(pr_node_id: str, nodes_by_id: Dict[str, Dict], edges: List
 
 
 def generate_risk_narrative(graph_data: Dict) -> str:
-    """Use Claude to generate a plain-English risk explanation. Falls back to template."""
+    """Use Gemini (Vertex AI) to generate a plain-English risk explanation.
+
+    Falls back to a deterministic template when the AI layer is not
+    configured or the API call fails.
+    """
     try:
-        from anthropic import Anthropic
+        from google import genai
+        from google.genai import types as genai_types
     except ImportError:
         return _template_narrative(graph_data)
 
-    if not settings.ANTHROPIC_API_KEY:
+    if not settings.GOOGLE_CLOUD_PROJECT:
         return _template_narrative(graph_data)
 
     dep_nodes = [n for n in graph_data["nodes"] if n["type"] == "dependency"]
@@ -476,13 +481,21 @@ def generate_risk_narrative(graph_data: Dict) -> str:
     )
 
     try:
-        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        msg = client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
+        client = genai.Client(
+            vertexai=True,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GOOGLE_CLOUD_LOCATION,
         )
-        return msg.content[0].text
+        config = genai_types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=320,
+        )
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=config,
+        )
+        return (response.text or "").strip() or _template_narrative(graph_data)
     except Exception as e:
         logger.warning("AI narrative failed, using template: %s", e)
         return _template_narrative(graph_data)

@@ -25,6 +25,12 @@
  * the document — the API key should be replaced with [REDACTED:SECRET].
  * ──────────────────────────────────────────────────────────────────────────
  */
+// Name of the *Linked Data Source* in App Services → Linked Data Sources.
+// By default this matches the cluster name (e.g. "Cluster0"). If yours is
+// different, change it here. Getting this wrong is the #1 cause of the error
+//   "non-recoverable error processing event: Cannot access member 'db' of undefined"
+const LINKED_DATA_SOURCE = "Cluster0";
+
 exports = async function (changeEvent) {
   const fullDoc = changeEvent.fullDocument;
   if (!fullDoc || !fullDoc.input_text) return;
@@ -64,7 +70,7 @@ exports = async function (changeEvent) {
   if (hits === 0 && fullDoc._redacted_by_db) return;
 
   const collection = context.services
-    .get("mongodb-atlas")
+    .get(LINKED_DATA_SOURCE)
     .db(changeEvent.ns.db)
     .collection(changeEvent.ns.coll);
 
@@ -82,7 +88,7 @@ exports = async function (changeEvent) {
   // Drop a row in audit_logs so the redaction is provable.
   if (hits > 0) {
     const audit = context.services
-      .get("mongodb-atlas")
+      .get(LINKED_DATA_SOURCE)
       .db(changeEvent.ns.db)
       .collection("audit_logs");
     await audit.insertOne({

@@ -9,6 +9,7 @@ import PolicyPage from './pages/PolicyPage.jsx'
 import EnterprisePage from './pages/EnterprisePage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import AgentsPage from './pages/AgentsPage.jsx'
+import AgentToolsPage from './pages/AgentToolsPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
 import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
 import AuthBadge from './components/AuthBadge.jsx'
@@ -25,6 +26,7 @@ const NAV = [
   { id: 'pm', label: 'PM' },
   { id: 'policy', label: 'Policy' },
   { id: 'agents', label: 'Agents' },
+  { id: 'agent-tools', label: 'Agent tools' },
   { id: 'enterprise', label: 'Enterprise' },
   { id: 'scan', label: 'Scan' },
 ]
@@ -292,6 +294,7 @@ function AppShell() {
               scans={history}
             />
           )}
+          {view === 'agent-tools' && <AgentToolsPage />}
           {view === 'enterprise' && <EnterprisePage />}
           {view === 'login' && (
             <LoginPage

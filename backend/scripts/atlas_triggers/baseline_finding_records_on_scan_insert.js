@@ -32,6 +32,12 @@
  * `audit_logs` with action "finding.discovered".
  * ──────────────────────────────────────────────────────────────────────────
  */
+// Name of the *Linked Data Source* in App Services → Linked Data Sources.
+// By default this matches the cluster name (e.g. "Cluster0"). If yours is
+// different, change it here. Getting this wrong is the #1 cause of the error
+//   "non-recoverable error processing event: Cannot access member 'db' of undefined"
+const LINKED_DATA_SOURCE = "Cluster0";
+
 exports = async function (changeEvent) {
   const fullDoc = changeEvent.fullDocument;
   if (!fullDoc) return;
@@ -39,7 +45,7 @@ exports = async function (changeEvent) {
   const findings = Array.isArray(fullDoc.findings) ? fullDoc.findings : [];
   if (findings.length === 0) return;
 
-  const db = context.services.get("mongodb-atlas").db(changeEvent.ns.db);
+  const db = context.services.get(LINKED_DATA_SOURCE).db(changeEvent.ns.db);
   const records = db.collection("finding_records");
   const audits = db.collection("audit_logs");
 
