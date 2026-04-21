@@ -1,38 +1,46 @@
 # PromptShield
 
-**LLM and AI-agent security for the SDLC.** PromptShield scans prompts, application code, and pull requests for prompt injection, unsafe tool exposure, and improper handling of LLM output. It combines static rules, AST-based dataflow analysis, and (optionally) Google Gemini for deeper semantic review. Findings map to **CWE** and **OWASP LLM Top 10** with evidence, remediation hints, and confidence scores.
+Shift-left security for AI agents — catch it in the PR, not in the postmortem.
+
+PromptShield is a proactive shift-left security scanner for LLM apps and agents. It flags prompt injection and other agent-specific risks before they ship by using static rules, AST-based taint/dataflow analysis, and Gemini-assisted review when enabled. Results are mapped to **CWE** and **OWASP LLM Top 10**, with evidence, remediation guidance, and confidence scores.
 
 ---
 
 ## Capabilities
 
-| Area | What you get |
-| --- | --- |
-| **Detection** | Layered pipeline: static rules, dataflow/taint to dangerous sinks, optional Gemini audit, optional vector “similar jailbreak” enrichment |
-| **Risk** | Single **0–100** score from merged findings; per-finding severity and category |
-| **PR workflow** | **GitHub App**: scan changed files, inline comments, check runs, configurable risk gate |
-| **Data** | **MongoDB Atlas** primary store: scans, search, vectors, benchmarks, agent-tool registry, alerts (see below) |
-| **Governance** | Policy-as-code (`.promptshield.yml`), suppressions, CSV/PDF exports, audit-oriented dashboards |
-| **Ops** | Per-IP rate limits, structured JSON logs with `request_id`, role-based auth (admin / PM / viewer) |
+
+| Area            | What you get                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Detection**   | Static rules + AST taint/dataflow to dangerous sinks; Gemini review when enabled; similarity matches to known jailbreak patterns |
+| **Risk**        | Single **0–100** score from merged findings; per-finding severity and category                                                   |
+| **PR workflow** | **GitHub App**: scan changed files, inline comments, check runs, configurable risk gate                                          |
+| **Data**        | **MongoDB Atlas** + Search/Vector Search: scans, corpora, similarity matches, benchmarks, tool registry, alerts                |
+| **Governance**  | Policy-as-code (`.promptshield.yml`), suppressions, CSV/PDF exports, audit-oriented dashboards                                   |
+| **Ops**         | Per-IP rate limits, structured JSON logs with `request_id`, role-based auth (admin / PM / viewer)                                |
+
 
 ---
 
 ## Stack
 
-| Layer | Technology |
-| --- | --- |
-| **API** | FastAPI (`backend/`), Uvicorn |
-| **Database** | MongoDB Atlas (Motor); **mongomock** when `MONGODB_URI` is unset (local/CI) |
-| **AI** | Google **Vertex AI** + **Gemini** via `google-genai`; auth via **service account** JSON (`GOOGLE_APPLICATION_CREDENTIALS`) |
-| **Embeddings** | MongoDB **Voyage AI** or local **sentence-transformers** (configurable) |
-| **Frontend** | React 18, Vite, Tailwind, Recharts, `react-force-graph-2d` |
-| **Deploy** | Root `requirements.txt` matches `backend/requirements.txt` for Railway/Nixpacks-style builds; `nixpacks.toml` starts the API from `backend/` |
+
+| Layer          | Technology                                                                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **API**        | FastAPI (`backend/`), Uvicorn                                                                                                                |
+| **Database**   | MongoDB Atlas (Motor) with Atlas Search/Vector Search; **mongomock** when `MONGODB_URI` is unset (local/CI)                                 |
+| **AI**         | Google **Vertex AI** + **Gemini** via `google-genai`; auth via **service account** JSON (`GOOGLE_APPLICATION_CREDENTIALS`)                   |
+| **Embeddings** | MongoDB **Voyage AI** or local **sentence-transformers** (configurable)                                                                      |
+| **Frontend**   | React 18, Vite, Tailwind                                                                                                                     |
+| **Deploy**     | Root `requirements.txt` matches `backend/requirements.txt` for Railway/Nixpacks-style builds; `nixpacks.toml` starts the API from `backend/` |
+
 
 ---
 
-## MongoDB Atlas (optional but recommended for full features)
+## MongoDB Atlas
 
-Atlas powers semantic and full-text search, hybrid ranking, vector similarity for jailbreak-like matches, change-stream live updates, time-series style analytics, and agent-focused collections (tool registry, exploit corpus, alerts). Apply search/vector **index definitions** under `backend/scripts/atlas_indexes/` (use Atlas UI or `mongosh` as documented in scripts).
+MongoDB Atlas is the backbone of PromptShield’s data layer. We use it as more than a database: it powers **Atlas Search** (keyword + semantic), **vector similarity** for “similar jailbreak” matches, and **hybrid retrieval/ranking** across scans and corpora. Atlas also supports **change streams** for live updates, analytics-friendly collections, and agent-focused datasets (tool registry, exploit corpus, alerts).
+
+To enable these features, apply the Search/Vector **index definitions** under `backend/scripts/atlas_indexes/` (via Atlas UI or `mongosh`, as noted in the scripts).
 
 **Minimal setup:** create a cluster → database user → network access → set `MONGODB_URI` and `PRIMARY_STORE=mongo` in `backend/.env` → run:
 
@@ -40,7 +48,7 @@ Atlas powers semantic and full-text search, hybrid ranking, vector similarity fo
 python backend/scripts/setup_atlas_indexes.py
 ```
 
-Optional: Atlas **Triggers** in `backend/scripts/atlas_triggers/` (e.g. redaction on insert, critical agent alerts). If triggers are not installed, Python-side fallbacks still run where implemented.
+If you want database-native automation, install Atlas **Triggers** in `backend/scripts/atlas_triggers/` (e.g. redaction on insert, critical agent alerts). Where triggers aren’t installed, Python-side fallbacks still run when implemented.
 
 ---
 
@@ -56,7 +64,7 @@ cp .env.example .env   # edit as needed; see below
 uvicorn main:app --reload --port 8000
 ```
 
-**Vertex AI (Gemini):** Request a **service account JSON key** from your project admin (Vertex AI User or broader roles as your org allows). Save it as e.g. `backend/google-credentials.json` and point **`GOOGLE_APPLICATION_CREDENTIALS`** at that path in `backend/.env` (see `.env.example`). Do not commit the JSON file—it is gitignored. With `GOOGLE_CLOUD_PROJECT` set and `GOOGLE_GENAI_USE_VERTEXAI=true`, the app uses Vertex only (no Gemini API key env vars).
+**Vertex AI (Gemini):** Request a **service account JSON key** from your project admin (Vertex AI User or broader roles as your org allows). Save it as e.g. `backend/google-credentials.json` and point `GOOGLE_APPLICATION_CREDENTIALS` at that path in `backend/.env` (see `.env.example`). Do not commit the JSON file—it is gitignored. With `GOOGLE_CLOUD_PROJECT` set and `GOOGLE_GENAI_USE_VERTEXAI=true`, the app uses Vertex only (no Gemini API key env vars).
 
 - Without `GOOGLE_CLOUD_PROJECT`, the Gemini layer is off. `PROMPTSHIELD_SCAN_MODE=fast` skips Gemini and vector enrichment on `/api/scan` even when a project is set (see `.env.example`).
 - Without `MONGODB_URI`, storage uses **mongomock** for development.
@@ -93,7 +101,7 @@ Confirm `GET /api/health` reports GitHub App configuration when env is correct.
 
 ## Configuration
 
-All important variables are documented in **`backend/.env.example`**. Typical groups:
+All important variables are documented in `backend/.env.example`. Typical groups:
 
 - **Vertex / Gemini:** `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON), `GOOGLE_CLOUD_LOCATION`, `GEMINI_MODEL`, `GOOGLE_GENAI_USE_VERTEXAI=true`
 - **MongoDB:** `MONGODB_URI`, `MONGODB_DB`, `PRIMARY_STORE`
@@ -104,17 +112,17 @@ All important variables are documented in **`backend/.env.example`**. Typical gr
 
 ## API overview
 
-Interactive docs: **`http://localhost:8000/docs`** (OpenAPI/Swagger) when the server is running.
+Interactive docs: `http://localhost:8000/docs` (OpenAPI/Swagger) when the server is running.
 
 Rough map:
 
-- **`/api/scan`** — main scan (static + dataflow + optional AI/vector path)
-- **`/api/scans`, `/api/dashboard/*`, `/api/reports/*`** — history, dashboards, exports
-- **`/api/v2/*`** — Atlas-backed search, similar scans, hybrid search, benchmarks, live scans (`/api/live/scans`), agent tools/alerts/timeline
-- **`/api/github/*`** — webhook and sync
-- **`/api/auth/*`, `/api/policy/*`, `/api/suppressions/*`** — sessions, policy validation, suppressions
+- `/api/scan` — main scan (static + dataflow + AI/vector path when enabled)
+- `/api/scans`, `/api/dashboard/*`, `/api/reports/*` — history, dashboards, exports
+- `/api/v2/*` — Atlas-backed search, similar scans, hybrid search, benchmarks, live scans (`/api/live/scans`), agent tools/alerts/timeline
+- `/api/github/*` — webhook and sync
+- `/api/auth/*`, `/api/policy/*`, `/api/suppressions/*` — sessions, policy validation, suppressions
 
-Responses include an **`x-request-id`** header aligned with structured logs.
+Responses include an `x-request-id` header aligned with structured logs.
 
 ---
 
