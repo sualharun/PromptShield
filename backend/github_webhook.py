@@ -278,8 +278,8 @@ def _build_check_payload(
     summary_lines = [
         f"**PromptShield** scanned {files_scanned} changed file(s).",
         "",
-        f"| Severity | Count |",
-        f"| --- | --- |",
+        "| Severity | Count |",
+        "| --- | --- |",
         f"| Critical | {counts.get('critical', 0)} |",
         f"| High | {counts.get('high', 0)} |",
         f"| Medium | {counts.get('medium', 0)} |",

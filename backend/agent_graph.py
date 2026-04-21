@@ -283,8 +283,6 @@ def build_agent_graph(
     # ── 2. Discover tools from code (AST) ──────────────────────────────
     code_tools = _detect_tools_from_code(code) if code else []
     tool_names_from_code = {t["name"] for t in code_tools}
-
-    # Also discover tools from findings
     tool_names_from_findings: Set[str] = set()
     for f in findings:
         if f.get("type") in TOOL_FINDING_TYPES:
@@ -292,9 +290,7 @@ def build_agent_graph(
             if name:
                 tool_names_from_findings.add(name)
 
-    # Merge — code tools have more metadata
-    all_tool_names = tool_names_from_code | tool_names_from_findings
-    tool_nodes: Dict[str, str] = {}  # name → node_id
+    tool_nodes: Dict[str, str] = {}
 
     for tool_info in code_tools:
         tid = f"tool:{tool_info['name']}"

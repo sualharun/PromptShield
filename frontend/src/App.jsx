@@ -142,7 +142,6 @@ function AppShell() {
   }, [])
 
   const isHome = view === 'home'
-  const isLightShell = true
   const showSidebar = view !== 'home' && view !== 'login' && view !== 'dashboard'
   const goLogin = () => setView('login')
 
@@ -183,20 +182,10 @@ function AppShell() {
       }`}
     >
       {!isHome && (
-        <header
-          className={`flex h-12 items-stretch border-b ${
-            isLightShell
-              ? 'border-[#de715d]/28 bg-[#16213e] text-white'
-              : 'border-carbon-border bg-[#161616] text-ibm-gray-100'
-          }`}
-        >
+        <header className="flex h-12 items-stretch border-b border-[#de715d]/28 bg-[#16213e] text-white">
           <button
             onClick={() => setView('home')}
-            className={`flex items-center gap-3 border-r px-4 transition-colors ${
-              isLightShell
-                ? 'border-[#de715d]/28 hover:bg-white/8'
-                : 'border-carbon-border hover:bg-carbon-layer'
-            }`}
+            className="flex items-center gap-3 border-r border-[#de715d]/28 px-4 transition-colors hover:bg-white/8"
           >
             <span aria-hidden className="font-mono text-[15px] font-bold tracking-tight">IBM</span>
             <span className="flex flex-col items-start leading-tight">
@@ -209,13 +198,7 @@ function AppShell() {
               </span>
             </span>
           </button>
-          <div
-            className={`hidden min-w-[140px] items-center border-r px-4 text-[12px] md:flex ${
-              isLightShell
-                ? 'border-[#de715d]/28 text-white/66'
-                : 'border-carbon-border text-carbon-text-secondary'
-            }`}
-          >
+          <div className="hidden min-w-[140px] items-center border-r border-[#de715d]/28 px-4 text-[12px] text-white/66 md:flex">
             All projects
           </div>
           <nav className="flex items-stretch text-[13px]">
@@ -235,12 +218,8 @@ function AppShell() {
                 }}
                 className={`px-4 transition-colors ${
                   view === item.id
-                    ? isLightShell
-                      ? 'border-b-2 border-b-[#de715d] bg-white/8 text-white'
-                      : 'border-b-2 border-b-ibm-blue-60 bg-carbon-layer text-ibm-gray-10'
-                    : isLightShell
-                      ? 'text-white/68 hover:bg-white/8 hover:text-white'
-                      : 'text-carbon-text-secondary hover:bg-carbon-layer hover:text-ibm-gray-10'
+                    ? 'border-b-2 border-b-[#de715d] bg-white/8 text-white'
+                    : 'text-white/68 hover:bg-white/8 hover:text-white'
                 }`}
               >
                 {item.label}
@@ -251,35 +230,21 @@ function AppShell() {
               disabled={!report}
               className={`px-4 transition-colors disabled:cursor-not-allowed disabled:text-carbon-text-tertiary ${
                 view === 'report'
-                  ? isLightShell
-                    ? 'border-b-2 border-b-[#de715d] bg-white/8 text-white'
-                    : 'border-b-2 border-b-ibm-blue-60 bg-carbon-layer text-ibm-gray-10'
-                  : isLightShell
-                    ? 'text-white/68 hover:bg-white/8 hover:text-white'
-                    : 'text-carbon-text-secondary hover:bg-carbon-layer hover:text-ibm-gray-10'
+                  ? 'border-b-2 border-b-[#de715d] bg-white/8 text-white'
+                  : 'text-white/68 hover:bg-white/8 hover:text-white'
               }`}
             >
               Report
               {report && (
-                <span
-                  className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center px-1.5 text-[11px] font-semibold text-white ${
-                    isLightShell ? 'bg-[#de715d]' : 'bg-ibm-blue-60'
-                  }`}
-                >
+                <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center bg-[#de715d] px-1.5 text-[11px] font-semibold text-white">
                   {report.total_count}
                 </span>
               )}
             </button>
           </nav>
-          <div
-            className={`ml-auto flex items-center gap-3 border-l px-4 text-[11px] ${
-              isLightShell
-                ? 'border-[#de715d]/28 text-white/68'
-                : 'border-carbon-border text-carbon-text-secondary'
-            }`}
-          >
+          <div className="ml-auto flex items-center gap-3 border-l border-[#de715d]/28 px-4 text-[11px] text-white/68">
             <span className="flex items-center gap-2">
-              <span className={`h-1.5 w-1.5 ${isLightShell ? 'bg-[#de715d]' : 'bg-ibm-green-50'}`} />
+              <span className="h-1.5 w-1.5 bg-[#de715d]" />
               <span>API connected</span>
             </span>
             <span className="hidden font-mono uppercase tracking-wider md:inline">
@@ -296,15 +261,9 @@ function AppShell() {
           showSidebar ? 'lg:grid-cols-[1fr,300px]' : ''
         }`}
       >
-        <main className={`overflow-y-auto ${isLightShell ? 'bg-[#f3f1ea]' : 'bg-carbon-bg'}`}>
+        <main className="overflow-y-auto bg-[#f3f1ea]">
           {error && (
-            <div
-              className={`mx-auto mt-3 w-full max-w-6xl border px-4 py-2 text-sm ${
-                isLightShell
-                  ? 'border-[#de715d]/40 bg-[#fff1ec] text-[#8f3c2d]'
-                  : 'border-ibm-red-60 bg-[#2d1215] text-[#ffd7d9]'
-              }`}
-            >
+            <div className="mx-auto mt-3 w-full max-w-6xl border border-[#de715d]/40 bg-[#fff1ec] px-4 py-2 text-sm text-[#8f3c2d]">
               {error}
             </div>
           )}
@@ -359,13 +318,7 @@ function AppShell() {
       </div>
 
       {!isHome && (
-        <footer
-          className={`border-t px-6 py-2 text-[11px] ${
-            isLightShell
-              ? 'border-[#de715d]/26 bg-[#16213e] text-white/68'
-              : 'border-carbon-border bg-carbon-bg text-carbon-text-tertiary dark:border-ibm-gray-80 dark:text-ibm-gray-40'
-          }`}
-        >
+        <footer className="border-t border-[#de715d]/26 bg-[#16213e] px-6 py-2 text-[11px] text-white/68">
           <div className="mx-auto flex max-w-7xl items-center justify-between">
             <span>PromptShield · Prompt security for production AI systems</span>
             <span className="font-mono">Carbon Design System</span>

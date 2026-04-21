@@ -1,15 +1,6 @@
-"""Authentication primitives: bcrypt hashing, signed-cookie sessions, role gates.
+"""Bcrypt hashing, signed-cookie sessions (via `itsdangerous`), and role gates.
 
-v0.4: Backed by MongoDB Atlas (`users` collection).
-The public surface (`get_current_user`, `require_role`, `create_session_token`,
-`hash_password`, `verify_password`, `bootstrap_admin_if_needed`) is unchanged
-so every dependent router keeps working without edits.
-
-We expose a `SessionUser` dataclass with `.id`, `.email`, `.name`, `.role` so
-existing handlers keep working unchanged.
-
-Sessions are still signed JSON in a cookie via `itsdangerous` — no server-side
-session table. Roles are `admin` | `pm` | `viewer`.
+Roles: `admin` | `pm` | `viewer`. Backed by MongoDB `users` collection.
 """
 from __future__ import annotations
 
@@ -30,11 +21,6 @@ _SESSION_SALT = "promptshield-session-v1"
 
 @dataclass
 class SessionUser:
-    """In-memory user view backed by a Mongo user document.
-
-    `id` is the string ObjectId. Handlers read `user.id`, `user.email`, etc.
-    """
-
     id: str
     email: str
     name: str
@@ -50,7 +36,6 @@ class SessionUser:
         )
 
 
-# Re-export under the legacy name `User` so `from auth import User` keeps working.
 User = SessionUser
 
 
@@ -102,12 +87,7 @@ def get_current_user(
     request: Request,
     session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> Optional[SessionUser]:
-    """Returns the current SessionUser or None. Never raises — use require_role for gates.
-
-    `db` parameter removed (legacy). Callers that pass it via
-    `Depends(get_current_user)` are unaffected because FastAPI resolves
-    dependencies by signature, not by call site.
-    """
+    """Return the current SessionUser or None. Never raises — use `require_role` for gates."""
     token = session
     if not token:
         auth = request.headers.get("authorization") or ""
@@ -142,11 +122,7 @@ def require_role(*roles: str):
 
 
 def bootstrap_admin_if_needed(_db_unused: Any = None) -> None:
-    """Create a single admin user from env on first startup when the table is empty.
-
-    Signature accepts a positional argument so existing callers (`bootstrap_admin_if_needed(db)`)
-    don't break — the SQL session is now ignored.
-    """
+    """Create a single admin user from env vars on first startup when no users exist."""
     email = (settings.BOOTSTRAP_ADMIN_EMAIL or "").strip().lower()
     password = settings.BOOTSTRAP_ADMIN_PASSWORD or ""
     if not email or not password:

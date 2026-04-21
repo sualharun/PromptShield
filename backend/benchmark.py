@@ -68,10 +68,10 @@ if __name__ == "__main__":
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
-    print(f"\n--- CONFUSION MATRIX ---")
+    print("\n--- CONFUSION MATRIX ---")
     print(f"TP: {tp}  FP: {fp}")
     print(f"FN: {fn}  TN: {tn}")
-    print(f"\n--- RESULTS ---")
+    print("\n--- RESULTS ---")
     print(f"Accuracy:  {correct_count}/{total} ({correct_count/total*100:.1f}%)")
     print(f"Precision: {precision:.2f}")
     print(f"Recall:    {recall:.2f}")

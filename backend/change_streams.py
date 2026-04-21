@@ -13,7 +13,6 @@ unavailable" message in those environments rather than crashing.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import datetime

@@ -1,10 +1,9 @@
 import pickle
-import json
 from typing import List
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-# Load ML model
 with open("ml_classifier.pkl", "rb") as f:
     model = pickle.load(f)
 vectorizer = model["vectorizer"]

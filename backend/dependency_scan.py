@@ -14,7 +14,7 @@ PR report can surface supply-chain risk alongside prompt risk.
 
 import json
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 # curated list: (ecosystem, package, vulnerable_spec, cve_or_advisory,

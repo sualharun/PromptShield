@@ -28,7 +28,7 @@ from typing import Optional
 
 from pymongo.errors import OperationFailure
 
-from embeddings import cosine, dims, embed, embed_many
+from embeddings import cosine, embed, embed_many
 from mongo import C, col, using_mock
 
 logger = logging.getLogger("promptshield.vector_search")

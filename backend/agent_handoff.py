@@ -108,7 +108,7 @@ def inspect_handoff(envelope: HandoffEnvelope):
         violations.append({
             "type": "CONFIDENTIAL_DATA_EXPOSURE",
             "severity": "critical",
-            "detail": f"Handoff targets a confidential repo across a trust boundary. High exfiltration risk."
+            "detail": "Handoff targets a confidential repo across a trust boundary. High exfiltration risk."
         })
 
     if ml_score >= 0.8:

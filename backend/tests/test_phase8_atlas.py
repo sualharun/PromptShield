@@ -18,8 +18,6 @@ the test, so order doesn't matter.
 """
 from __future__ import annotations
 
-import pytest
-
 from mongo import C, col
 
 

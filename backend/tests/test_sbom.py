@@ -1,7 +1,6 @@
 """Tests for SBOM generation."""
 
 import tempfile
-from pathlib import Path
 
 from sbom import generate_sbom
 

@@ -9,36 +9,31 @@ venv/
 # Logs
 *.log
 
-# Benchmark artifacts (reproducible via scripts)
+# Regenerable benchmark / script outputs
 backend/benchmark_chart.png
 backend/iteration_chart.png
 backend/benchmark_results.json
 backend/three_layer_results.json
 
-# Node
+# Node / frontend
 node_modules/
 dist/
 .vite/
-# Single lockfile (npm); prevent stray pnpm lock
+.vercel
+
+# This repo uses npm (package-lock.json)
 pnpm-lock.yaml
 
-# Env
+# Environment & secrets
 .env
 .env.local
-
-# Secrets / keys
 *.pem
 *.key
 
-# Local sandbox repo
+# Local sandbox
 Test/
 
-# Editors
+# OS & editors
 .DS_Store
 .vscode/
 .idea/
-
-# Elastic Beanstalk Files
-.elasticbeanstalk/*
-!.elasticbeanstalk/*.cfg.yml
-!.elasticbeanstalk/*.global.yml

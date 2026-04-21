@@ -433,16 +433,14 @@ def static_scan(text: str, language: Optional[str] = None) -> List[Dict]:
                 )
         except re.error:
             continue
-    
+
     findings.extend(_detect_insecure_uploads(text, scan_language))
 
-    # Add agent security scanning (new feature)
     if scan_agent_security:
         try:
             agent_findings = scan_agent_security(text, scan_language)
             for agent_finding in agent_findings:
-                # Convert agent finding dataclass to dict
-                finding_dict = {
+                findings.append({
                     "type": agent_finding.type,
                     "severity": agent_finding.severity,
                     "title": agent_finding.title,
@@ -453,16 +451,14 @@ def static_scan(text: str, language: Optional[str] = None) -> List[Dict]:
                     "confidence": 0.8,
                     "evidence": agent_finding.evidence,
                     "cwe": agent_finding.cwe,
-                    "owasp": ','.join(agent_finding.owasp_llm) if agent_finding.owasp_llm else '',
+                    "owasp": ",".join(agent_finding.owasp_llm) if agent_finding.owasp_llm else "",
                     "language": scan_language,
                     "agent_function": agent_finding.function_name,
                     "agent_sink": agent_finding.sink_name,
-                }
-                findings.append(finding_dict)
-        except Exception as e:
-            # Gracefully skip agent analysis if it fails
+                })
+        except Exception:
             pass
-    
+
     return findings
 
 

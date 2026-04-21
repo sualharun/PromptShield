@@ -14,7 +14,7 @@ import secrets
 from contextvars import ContextVar
 from typing import Any, Optional
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 
 import repositories as repos
 from auth import SessionUser

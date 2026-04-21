@@ -234,7 +234,7 @@ def build_risk_graph(
         max_source_risk = max(max_source_risk, dep_risk)
         affected_packages.append(dep["name"])
 
-        dep_node = _upsert_node(
+        _upsert_node(
             nodes_by_id,
             dep_id,
             {

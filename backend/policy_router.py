@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from policy import EXAMPLE_POLICY_YAML, PolicyError, apply_policy, parse_policy

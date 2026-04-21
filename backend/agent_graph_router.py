@@ -12,7 +12,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import repositories as repos
-from mongo import C, col
 from agent_graph import build_agent_graph
 
 logger = logging.getLogger("promptshield.agent_graph")

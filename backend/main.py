@@ -11,7 +11,6 @@ import csv
 import io
 import json
 import logging
-from pathlib import Path
 import re
 import time
 import uuid
@@ -19,7 +18,7 @@ from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, List, Literal, Optional
+from typing import List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -851,9 +850,7 @@ def run_scan(req: ScanRequest, request: Request):
             logger.warning("vector enrichment skipped: %s", e, extra={"event": "vector_skip"})
 
     persisted_text = redact(text) if settings.REDACT_PERSISTED_INPUT else text
-    # Try to persist, but if Mongo is unavailable, return stateless response.
-    # Inside the try we also do the agentic-security side-effects (tool
-    # registry, alert fan-out, attack-surface snapshot) — all best-effort.
+    # Persistence and agentic side-effects are best-effort; fall back to a stateless response on failure.
     try:
         doc = repos.insert_scan(
             {
@@ -922,10 +919,7 @@ def run_scan(req: ScanRequest, request: Request):
         )
 
 
-# Demo vulnerable-agent files served to the scan page so judges (or any user)
-# can one-click load a known-vulnerable agent and see PromptShield catch it.
-# Files live at backend/examples/*.py and are committed by the team's
-# detector author. Read-only and bounded for safety.
+# Demo vulnerable-agent files served read-only (bounded) to the scan page.
 _EXAMPLES_DIR = Path(__file__).resolve().parent / "examples"
 _EXAMPLE_MAX_BYTES = 50_000
 
@@ -947,17 +941,10 @@ _EXAMPLE_DESCRIPTIONS = {
 
 @app.get("/api/examples")
 def list_examples():
-    """Return demo vulnerable-agent files for the scan page.
-
-    The frontend renders these as one-click "Try with..." buttons that load
-    the file content into the scan textarea. Each entry includes a short
-    human-readable description so the UI can show *why* the file is risky
-    before the user runs the scan.
-    """
+    """Return demo vulnerable-agent files for the scan page."""
     examples = []
     if _EXAMPLES_DIR.is_dir():
         for f in sorted(_EXAMPLES_DIR.glob("*.py")):
-            # Skip private/dunder files (e.g. __init__.py)
             if f.name.startswith("_"):
                 continue
             try:
@@ -1084,8 +1071,7 @@ def github_dashboard():
     avg_findings_per_pr = round(finding_total / total, 2) if total else 0.0
     daily = _daily_velocity(all_github, threshold)
 
-    # Validation gap: prompts missing key defenses (delimiters, refusal, input labeling)
-    from jailbreak_engine import simulate as jailbreak_simulate_structural
+    # Validation gap: fraction of recent prompts missing delimiter/refusal/input-labeling defenses.
     recent_prompts = [s.get("input_text") or "" for s in recent_rows]
     missing_defenses = 0
     checked = 0
@@ -1093,7 +1079,6 @@ def github_dashboard():
         try:
             report = jailbreak_simulate_structural(prompt)
             defenses = report.get("defenses", {})
-            # If any key defense is missing, count as missing
             if not (defenses.get("has_delimiters") and defenses.get("has_refusal_instruction") and defenses.get("has_input_labeling")):
                 missing_defenses += 1
             checked += 1
@@ -1125,7 +1110,7 @@ def github_dashboard():
             for k, v in lang_counter.most_common()
         ],
     )
-    dashboard_dict = dashboard.dict()
+    dashboard_dict = dashboard.model_dump()
     dashboard_dict["agent_findings_count"] = agent_findings_count
     dashboard_dict["validation_gap_pct"] = validation_gap_pct
     return dashboard_dict
@@ -1434,14 +1419,14 @@ def suggest_fix(req: SuggestFixRequest):
             suggestion = ai_items[0].get("remediation") or ai_items[0].get("description")
         else:
             suggestion = (
-                f"Move sensitive values to environment variables, add strict prompt delimiters, "
-                f"and validate untrusted input before model calls."
+                "Move sensitive values to environment variables, add strict prompt delimiters, "
+                "and validate untrusted input before model calls."
             )
         src = "ai"
     else:
         suggestion = (
             f"Refactor `{f.type}` by removing embedded secrets/PII from model-visible text, "
-            f"wrapping user input in delimiters, and enforcing explicit refusal guardrails."
+            "wrapping user input in delimiters, and enforcing explicit refusal guardrails."
         )
         src = "static"
     _log_audit(
@@ -1639,23 +1624,6 @@ def get_sbom():
 
 
 # --- Health ---
-
-@app.get("/api/examples")
-def list_examples():
-    """Return the demo vulnerable agent files for the 'Try with vulnerable agent' button."""
-    examples_dir = Path(__file__).resolve().parent / "examples"
-    if not examples_dir.is_dir():
-        return {"examples": []}
-    out = []
-    for p in sorted(examples_dir.glob("*.py")):
-        if p.name.startswith("__"):
-            continue
-        out.append({
-            "filename": p.name,
-            "content": p.read_text(),
-        })
-    return {"examples": out}
-
 
 @app.get("/api/health")
 def health():

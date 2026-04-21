@@ -1,24 +1,21 @@
-"""
-Agent Security Scanner – Integrated analysis of AI function safety.
+"""Integrated agent-security scanner.
 
-Combines:
-1. Function extraction (what functions are exposed to AI)
-2. Dangerous operation detection (what sinks exist)
-3. Connection analysis (which functions call dangerous sinks)
+Combines (1) extraction of LLM-exposed functions, (2) dangerous-sink detection,
+and (3) connection analysis that flags exposed functions calling dangerous sinks.
 """
 import re
 from typing import List, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from agent_function_extractor import extract_agent_functions, ExtractedFunction
-from agent_sink_analyzer import analyze_sinks, DangerousSink, SinkCategory
+from agent_sink_analyzer import analyze_sinks, DangerousSink
+
 
 @dataclass
 class AgentSecurityFinding:
-    """A security finding related to AI function safety."""
-    type: str  # AGENT_FUNCTION_EXPOSURE, DANGEROUS_SINK, UNVALIDATED_FUNCTION_PARAM
+    type: str
     language: str
-    severity: str  # critical, high, medium, low
+    severity: str
     title: str
     description: str
     line: int
@@ -30,41 +27,25 @@ class AgentSecurityFinding:
     remediation: str
     code_snippet: Optional[str]
 
+
 class AgentSecurityScanner:
-    """Scan code for AI agent security issues."""
-
-    def __init__(self):
-        pass
-
     def scan(self, code: str, language: str) -> List[AgentSecurityFinding]:
-        """Run full agent security analysis."""
-        findings = []
-        
-        # Step 1: Extract functions exposed to LLMs
+        findings: List[AgentSecurityFinding] = []
         extracted_functions = extract_agent_functions(code, language)
         findings.extend(self._findings_from_extracted_functions(extracted_functions, code))
-        
-        # Step 2: Find dangerous sinks
+
         dangerous_sinks = analyze_sinks(code, language)
         findings.extend(self._findings_from_sinks(dangerous_sinks, code))
-        
-        # Step 3: Connect functions to sinks (which functions call dangerous sinks?)
+
         findings.extend(self._findings_from_connections(extracted_functions, dangerous_sinks, code, language))
-        
         return findings
 
     def _findings_from_extracted_functions(self, functions: List[ExtractedFunction], code: str) -> List[AgentSecurityFinding]:
-        """Generate findings for exposed functions."""
-        findings = []
-        
+        findings: List[AgentSecurityFinding] = []
         for func in functions:
             if func.is_registered:
-                # This function is explicitly registered as a tool
                 has_validation = self._check_validation(func, code, func.language)
-                
-                # Get the function code
                 func_code = self._extract_function_code(code, func.line, func.end_line)
-                
                 severity = "high" if not has_validation else "medium"
                 
                 finding = AgentSecurityFinding(
@@ -92,11 +73,8 @@ class AgentSecurityScanner:
         return findings
 
     def _findings_from_sinks(self, sinks: List[tuple[int, DangerousSink]], code: str) -> List[AgentSecurityFinding]:
-        """Generate findings for dangerous sinks."""
-        findings = []
-        
+        findings: List[AgentSecurityFinding] = []
         for line_no, sink in sinks:
-            # Check if sink is in a function that's exposed to AI
             finding = AgentSecurityFinding(
                 type="DANGEROUS_SINK",
                 language=sink.language,
@@ -113,7 +91,6 @@ class AgentSecurityScanner:
                 code_snippet=self._get_line_content(code, line_no),
             )
             findings.append(finding)
-        
         return findings
 
     def _findings_from_connections(
@@ -121,23 +98,17 @@ class AgentSecurityScanner:
         functions: List[ExtractedFunction],
         sinks: List[tuple[int, DangerousSink]],
         code: str,
-        language: str
+        language: str,
     ) -> List[AgentSecurityFinding]:
-        """Generate findings for dangerous connections: exposed function calls dangerous sink."""
-        findings = []
-        
+        findings: List[AgentSecurityFinding] = []
         for func in functions:
             if not func.is_registered:
                 continue
-            
             func_code = self._extract_function_code(code, func.line, func.end_line)
             if not func_code:
                 continue
-            
-            # Check if this function's code calls any dangerous sinks
             for sink_line, sink in sinks:
                 if sink_line >= func.line and (func.end_line is None or sink_line <= func.end_line):
-                    # This sink is within the function
                     finding = AgentSecurityFinding(
                         type="UNVALIDATED_FUNCTION_PARAM_TO_SINK",
                         language=language,
@@ -159,67 +130,44 @@ class AgentSecurityScanner:
                         code_snippet=func_code[:300],
                     )
                     findings.append(finding)
-        
         return findings
 
-    @staticmethod
-    def _check_validation(func: ExtractedFunction, code: str, language: str) -> bool:
-        """Simple heuristic: does function validate its inputs?"""
-        func_code = AgentSecurityScanner._extract_function_code(code, func.line, func.end_line)
+    _VALIDATION_PATTERNS = (
+        re.compile(r"\b(assert|if|raise|ValidationError)\b", re.IGNORECASE),
+        re.compile(r"(allowlist|whitelist|validate|check|guard)", re.IGNORECASE),
+    )
+
+    @classmethod
+    def _check_validation(cls, func: ExtractedFunction, code: str, language: str) -> bool:
+        func_code = cls._extract_function_code(code, func.line, func.end_line)
         if not func_code:
             return False
-        
-        # Look for validation patterns
-        validation_patterns = [
-            r'\b(assert|if|raise|ValidationError)\b',
-            r'(allowlist|whitelist|validate|check|guard)',
-        ]
-        
-        for pattern in validation_patterns:
-            if re.search(pattern, func_code, re.IGNORECASE):
-                return True
-        
-        return False
+        return any(p.search(func_code) for p in cls._VALIDATION_PATTERNS)
 
     @staticmethod
     def _extract_function_code(code: str, start_line: int, end_line: Optional[int]) -> Optional[str]:
-        """Extract function body from code."""
-        lines = code.split('\n')
+        lines = code.split("\n")
         if start_line < 1 or start_line > len(lines):
             return None
-        
         end = end_line if end_line and end_line <= len(lines) else min(start_line + 20, len(lines))
-        return '\n'.join(lines[start_line - 1:end])
+        return "\n".join(lines[start_line - 1:end])
 
     @staticmethod
     def _get_line_content(code: str, line_no: int) -> str:
-        """Get content of a specific line."""
-        lines = code.split('\n')
+        lines = code.split("\n")
         if line_no < 1 or line_no > len(lines):
             return ""
         return lines[line_no - 1].strip()
 
     @staticmethod
     def _find_containing_function(code: str, line_no: int) -> Optional[str]:
-        """Find which function contains a given line."""
-        lines = code.split('\n')
-        
-        # Search backwards from line_no
+        lines = code.split("\n")
         for i in range(line_no - 1, -1, -1):
-            line = lines[i]
-            func_match = re.match(r'^\s*(?:def|function|async\s+function)\s+(\w+)', line)
+            func_match = re.match(r"^\s*(?:def|function|async\s+function)\s+(\w+)", lines[i])
             if func_match:
                 return func_match.group(1)
-        
         return None
 
 
 def scan_agent_security(code: str, language: str) -> List[AgentSecurityFinding]:
-    """Convenience function."""
-    scanner = AgentSecurityScanner()
-    return scanner.scan(code, language)
-
-
-def findings_to_dicts(findings: List[AgentSecurityFinding]) -> List[dict]:
-    """Convert findings to dictionaries for JSON serialization."""
-    return [asdict(f) for f in findings]
+    return AgentSecurityScanner().scan(code, language)

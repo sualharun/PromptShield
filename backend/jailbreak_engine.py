@@ -12,7 +12,7 @@ rather than just checking for defense keywords.
 """
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 # --- Attack payloads organized by category ---

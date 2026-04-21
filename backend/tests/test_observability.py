@@ -79,7 +79,7 @@ def test_tracer_context_manager():
 def test_tracer_captures_error():
     t = Tracer()
     try:
-        with t.span("bad") as s:
+        with t.span("bad"):
             raise ValueError("boom")
     except ValueError:
         pass

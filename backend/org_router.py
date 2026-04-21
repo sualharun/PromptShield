@@ -15,7 +15,7 @@ import repositories as repos
 from auth import SessionUser, get_current_user, require_role
 from mongo import C, col
 from tenant import create_org as create_org_helper
-from tenant import generate_api_key, hash_api_key  # noqa: F401  (re-export for tests)
+from tenant import generate_api_key
 
 
 router = APIRouter(prefix="/api/orgs", tags=["organizations"])

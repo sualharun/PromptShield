@@ -9,9 +9,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import repositories as repos
 from mongo import C, col
-from policy import PolicyError, apply_policy, parse_policy  # noqa: F401  (re-exported)
+from policy import apply_policy, parse_policy
 
 
 def _next_version(repo_full_name: Optional[str], org_id: Optional[str]) -> int:
