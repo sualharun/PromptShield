@@ -1,8 +1,8 @@
 """AI analysis layer — Google Vertex AI (Gemini) backend.
 
-Uses the unified `google-genai` SDK in Vertex mode. Authentication is via
-Application Default Credentials (`gcloud auth application-default login`)
-or a service account JSON pointed to by GOOGLE_APPLICATION_CREDENTIALS.
+Uses the unified `google-genai` SDK in Vertex mode (`vertexai=True` on the client).
+Authenticate with a service account: set `GOOGLE_APPLICATION_CREDENTIALS` to the
+path of the JSON key file (exported in your shell or `backend/.env`).
 
 The AI layer is *additive* on top of the static + dataflow analyzers. It
 catches contextual issues regex/AST cannot — e.g. "this tool looks safe in

@@ -23,7 +23,7 @@
 | --- | --- |
 | **API** | FastAPI (`backend/`), Uvicorn |
 | **Database** | MongoDB Atlas (Motor); **mongomock** when `MONGODB_URI` is unset (local/CI) |
-| **AI** | Google **Vertex AI** + **Gemini** via `google-genai` (Application Default Credentials) |
+| **AI** | Google **Vertex AI** + **Gemini** via `google-genai`; auth via **service account** JSON (`GOOGLE_APPLICATION_CREDENTIALS`) |
 | **Embeddings** | MongoDB **Voyage AI** or local **sentence-transformers** (configurable) |
 | **Frontend** | React 18, Vite, Tailwind, Recharts, `react-force-graph-2d` |
 | **Deploy** | Root `requirements.txt` matches `backend/requirements.txt` for Railway/Nixpacks-style builds; `nixpacks.toml` starts the API from `backend/` |
@@ -53,9 +53,10 @@ cd backend
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env   # edit as needed; see below
-gcloud auth application-default login   # once, if using Vertex AI
 uvicorn main:app --reload --port 8000
 ```
+
+**Vertex AI (Gemini):** Request a **service account JSON key** from your project admin (Vertex AI User or broader roles as your org allows). Save it as e.g. `backend/google-credentials.json` and point **`GOOGLE_APPLICATION_CREDENTIALS`** at that path in `backend/.env` (see `.env.example`). Do not commit the JSON file—it is gitignored. With `GOOGLE_CLOUD_PROJECT` set and `GOOGLE_GENAI_USE_VERTEXAI=true`, the app uses Vertex only (no Gemini API key env vars).
 
 - Without `GOOGLE_CLOUD_PROJECT`, the Gemini layer is off. `PROMPTSHIELD_SCAN_MODE=fast` skips Gemini and vector enrichment on `/api/scan` even when a project is set (see `.env.example`).
 - Without `MONGODB_URI`, storage uses **mongomock** for development.
@@ -94,7 +95,7 @@ Confirm `GET /api/health` reports GitHub App configuration when env is correct.
 
 All important variables are documented in **`backend/.env.example`**. Typical groups:
 
-- **Vertex / Gemini:** `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GEMINI_MODEL`, `GOOGLE_GENAI_USE_VERTEXAI`
+- **Vertex / Gemini:** `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS` (path to service account JSON), `GOOGLE_CLOUD_LOCATION`, `GEMINI_MODEL`, `GOOGLE_GENAI_USE_VERTEXAI=true`
 - **MongoDB:** `MONGODB_URI`, `MONGODB_DB`, `PRIMARY_STORE`
 - **Embeddings:** `EMBEDDING_PROVIDER`, `VOYAGE_API_KEY` (if using Voyage), dimensions aligned with Atlas indexes
 - **HTTP:** `ALLOWED_ORIGINS`, `SCAN_RATE_LIMIT`, `SCAN_RATE_WINDOW`, `MAX_INPUT_CHARS`, `REDACT_PERSISTED_INPUT`, `LOG_LEVEL`

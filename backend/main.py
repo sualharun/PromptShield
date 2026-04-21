@@ -1645,6 +1645,10 @@ def health():
             "model": settings.GEMINI_MODEL,
             "configured": bool(settings.GOOGLE_CLOUD_PROJECT),
             "vertex_location": settings.GOOGLE_CLOUD_LOCATION,
+            "vertexai": settings.GOOGLE_GENAI_USE_VERTEXAI,
+            "google_application_credentials_set": bool(
+                settings.GOOGLE_APPLICATION_CREDENTIALS
+            ),
             "scan_mode": settings.PROMPTSHIELD_SCAN_MODE,
             "gemini_on_scan_path": bool(settings.GOOGLE_CLOUD_PROJECT)
             and settings.PROMPTSHIELD_SCAN_MODE != "fast",

@@ -37,8 +37,16 @@ function PRScanRow({ scan, threshold = 70, onSelect, agentAccount = null }) {
   const sha = (scan.commit_sha || '').slice(0, 7)
   return (
     <tr
+      tabIndex={0}
+      role="button"
       onClick={() => onSelect?.(scan.id)}
-      className="cursor-pointer border-b border-[#de715d]/18 bg-white transition-colors hover:bg-[#f7f5ef]"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect?.(scan.id)
+        }
+      }}
+      className="cursor-pointer border-b border-[#de715d]/18 bg-white transition-colors hover:bg-[#f7f5ef] focus-visible:outline focus-visible:ring-2 focus-visible:ring-[#de715d]/50"
     >
       <td className="px-4 py-3 text-sm text-[#16213e]">
         <div className="flex flex-col">

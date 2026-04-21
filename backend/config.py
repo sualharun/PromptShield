@@ -57,11 +57,16 @@ class Settings:
         ).split(",")
         if o.strip()
     ]
-    # Google Vertex AI (Gemini) — uses Application Default Credentials.
-    # GOOGLE_CLOUD_PROJECT being set is the "AI layer enabled" signal.
+    # Google Vertex AI (Gemini). GOOGLE_CLOUD_PROJECT enables the AI layer.
+    # Auth: set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON key path;
+    # Google client libraries load it automatically (do not commit the file).
     GOOGLE_CLOUD_PROJECT: str | None = os.environ.get("GOOGLE_CLOUD_PROJECT")
     GOOGLE_CLOUD_LOCATION: str = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
     GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    GOOGLE_GENAI_USE_VERTEXAI: bool = _bool("GOOGLE_GENAI_USE_VERTEXAI", True)
+    GOOGLE_APPLICATION_CREDENTIALS: str | None = (
+        os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or None
+    )
     AI_PROVIDER: str = "gemini"
     # fast → core detectors only (no Vertex call, no scan vector enrich). full → layered pipeline.
     PROMPTSHIELD_SCAN_MODE: str = _normalize_scan_mode(os.environ.get("PROMPTSHIELD_SCAN_MODE"))

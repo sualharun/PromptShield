@@ -36,7 +36,7 @@ def mock_ai_scan(monkeypatch):
     """Stub the Gemini AI layer with a deterministic agentic finding list.
 
     Use this in any test that exercises /api/scan or _process_pr end-to-end
-    so we don't hit Vertex AI from CI (slow, costs money, requires ADC).
+    so we don't hit Vertex AI from CI (slow, costs money, needs real credentials).
 
     The stubbed payload always includes one DANGEROUS_TOOL_CAPABILITY and
     one LLM_OUTPUT_TO_EXEC finding so tests can assert that AI findings

@@ -37,3 +37,6 @@ Test/
 .DS_Store
 .vscode/
 .idea/
+
+# Google Cloud credentials
+backend/google-credentials.json

@@ -11,7 +11,6 @@ import LoginPage from './pages/LoginPage.jsx'
 import AgentsPage from './pages/AgentsPage.jsx'
 import AgentToolsPage from './pages/AgentToolsPage.jsx'
 import ScanHistory from './components/ScanHistory.jsx'
-import ThemeToggle, { useTheme } from './components/ThemeToggle.jsx'
 import AuthBadge from './components/AuthBadge.jsx'
 import { AuthProvider, useAuth } from './auth/AuthContext.jsx'
 import { fetchWithTimeout, asNetworkErrorMessage } from './lib/fetchWithTimeout.js'
@@ -57,7 +56,11 @@ function AppShell() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [agentAccounts, setAgentAccounts] = useState([])
-  useTheme()
+
+  useEffect(() => {
+    document.documentElement.classList.remove('dark')
+    document.documentElement.setAttribute('data-theme', 'light')
+  }, [])
 
   useEffect(() => {
     saveAgentAccounts(agentAccounts)
@@ -182,26 +185,15 @@ function AppShell() {
       }`}
     >
       {!isHome && (
-        <header className="flex h-12 items-stretch border-b border-[#de715d]/28 bg-[#16213e] text-white">
+        <header className="flex h-11 min-h-11 flex-wrap items-stretch border-b border-[#de715d]/28 bg-[#16213e] text-white sm:flex-nowrap">
           <button
+            type="button"
             onClick={() => setView('home')}
-            className="flex items-center gap-3 border-r border-[#de715d]/28 px-4 transition-colors hover:bg-white/8"
+            className="flex shrink-0 items-center border-r border-[#de715d]/28 px-4 text-left text-[14px] font-semibold tracking-tight transition-colors hover:bg-white/8"
           >
-            <span aria-hidden className="font-mono text-[15px] font-bold tracking-tight">IBM</span>
-            <span className="flex flex-col items-start leading-tight">
-              <span className="text-[14px] font-medium">PromptShield</span>
-              <span
-                className="text-[12px] font-semibold tracking-normal text-white"
-                style={{ fontFamily: '"SF Pro Text", "Inter", "Segoe UI", "IBM Plex Sans", sans-serif' }}
-              >
-                Security Prompt Audit
-              </span>
-            </span>
+            PromptShield
           </button>
-          <div className="hidden min-w-[140px] items-center border-r border-[#de715d]/28 px-4 text-[12px] text-white/66 md:flex">
-            All projects
-          </div>
-          <nav className="flex items-stretch text-[13px]">
+          <nav className="flex min-w-0 flex-1 items-stretch overflow-x-auto text-[13px]">
             {NAV.map((item) => (
               <button
                 key={item.id}
@@ -242,16 +234,12 @@ function AppShell() {
               )}
             </button>
           </nav>
-          <div className="ml-auto flex items-center gap-3 border-l border-[#de715d]/28 px-4 text-[11px] text-white/68">
-            <span className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 bg-[#de715d]" />
-              <span>API connected</span>
-            </span>
-            <span className="hidden font-mono uppercase tracking-wider md:inline">
-              v0.3.0
+          <div className="ml-auto flex shrink-0 items-center gap-3 border-l border-[#de715d]/28 px-3 text-[11px] text-white/70 sm:px-4">
+            <span className="hidden items-center gap-2 sm:flex">
+              <span className="h-1.5 w-1.5 shrink-0 bg-[#de715d]" aria-hidden />
+              <span>API</span>
             </span>
             <AuthBadge onSignIn={goLogin} />
-            <ThemeToggle />
           </div>
         </header>
       )}
@@ -318,11 +306,8 @@ function AppShell() {
       </div>
 
       {!isHome && (
-        <footer className="border-t border-[#de715d]/26 bg-[#16213e] px-6 py-2 text-[11px] text-white/68">
-          <div className="mx-auto flex max-w-7xl items-center justify-between">
-            <span>PromptShield · Prompt security for production AI systems</span>
-            <span className="font-mono">Carbon Design System</span>
-          </div>
+        <footer className="border-t border-[#de715d]/26 bg-[#16213e] px-4 py-2 text-[11px] text-white/65">
+          <div className="mx-auto max-w-7xl">Prompt security for production AI systems</div>
         </footer>
       )}
     </div>
